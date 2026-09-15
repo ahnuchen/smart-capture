@@ -15,6 +15,26 @@
       --accent-bg: rgba(96, 165, 250, 0.14);
       --danger: #f87171;
       --ok: #34d399;
+      --hover: rgba(255, 255, 255, 0.10);
+      --scroll-thumb: #333949;
+      --scroll-thumb-hover: #454d63;
+      --savebar-bg: rgba(21, 23, 31, 0.97);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f6fa;
+        --panel: #ffffff;
+        --panel2: #eef0f5;
+        --border: rgba(60, 70, 100, 0.18);
+        --text: #1f2430;
+        --muted: #6b7280;
+        --accent: #2f6fe0;
+        --accent-bg: rgba(47, 111, 224, 0.10);
+        --hover: rgba(0, 0, 0, 0.06);
+        --scroll-thumb: #c3c8d4;
+        --scroll-thumb-hover: #a9b0bf;
+        --savebar-bg: rgba(255, 255, 255, 0.97);
+      }
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
@@ -27,10 +47,10 @@
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb {
-      background: #333949; border-radius: 6px;
+      background: var(--scroll-thumb); border-radius: 6px;
       border: 2px solid transparent; background-clip: padding-box;
     }
-    ::-webkit-scrollbar-thumb:hover { background-color: #454d63; }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
     ::-webkit-scrollbar-corner { background: transparent; }
     /* 自定义标题栏 */
     #titlebar {
@@ -50,7 +70,7 @@
       border: none; background: transparent; color: var(--muted);
       font-size: 13px; border-radius: 0;
     }
-    .win-ops button:hover { background: rgba(255, 255, 255, 0.10); color: var(--text); }
+    .win-ops button:hover { background: var(--hover); color: var(--text); }
     .win-ops button.close:hover { background: #e81123; color: #fff; }
     #layout { display: flex; flex: 1; overflow: hidden; }
     nav {
@@ -126,7 +146,7 @@
 
     #savebar {
       position: fixed; left: 190px; right: 0; bottom: 0;
-      background: rgba(21, 23, 31, .97); border-top: 1px solid var(--border);
+      background: var(--savebar-bg); border-top: 1px solid var(--border);
       padding: 12px 26px; display: flex; align-items: center; gap: 14px; z-index: 10;
     }
     #saveTip { color: var(--ok); font-size: 13px; opacity: 0; transition: opacity .25s; }
@@ -145,9 +165,9 @@
     <img src="../../../assets/icon.png" alt="" />
     <span class="t-title" data-i18n="set.titlebar"></span>
     <div class="win-ops">
-      <button id="winMax" data-i18n-title="set.winMax">▢</button>
-      <button id="winMin" data-i18n-title="res.winMin">—</button>
-      <button id="winClose" class="close" data-i18n-title="res.winClose">✕</button>
+      <button id="winMin" data-i18n-title="win.minimize">—</button>
+      <button id="winMax" data-i18n-title="win.maximize">▢</button>
+      <button id="winClose" class="close" data-i18n-title="win.close">✕</button>
     </div>
   </div>
   <div id="layout">
@@ -259,6 +279,17 @@
       <section class="page" id="page-general">
         <h2 data-i18n="gen.title"></h2>
         <div class="sub" data-i18n="gen.sub"></div>
+        <div class="card">
+          <h3 data-i18n="gen.theme"></h3>
+          <div class="field">
+            <label data-i18n="gen.themeLabel"></label>
+            <select id="theme">
+              <option value="system" data-i18n="theme.system"></option>
+              <option value="dark" data-i18n="theme.dark"></option>
+              <option value="light" data-i18n="theme.light"></option>
+            </select>
+          </div>
+        </div>
         <div class="card">
           <h3 data-i18n="gen.language"></h3>
           <div class="field">

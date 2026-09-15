@@ -1,5 +1,5 @@
 // 分析会话：结果窗口 + 多轮对话 + 流式输出
-const { BrowserWindow, clipboard, nativeImage, dialog, screen } = require('electron');
+const { BrowserWindow, clipboard, nativeImage, dialog, screen, nativeTheme } = require('electron');
 const path = require('path');
 const crypto = require('crypto');
 const { chatStream } = require('./ai');
@@ -79,7 +79,7 @@ class AnalysisManager {
       minHeight: 420,
       show: false,
       frame: false,
-      backgroundColor: '#15171f',
+      backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171f' : '#f5f6fa',
       title: t('win.result', session.agentDisplayName || session.agent.name),
       icon: path.join(__dirname, '../../assets/icon.png'),
       webPreferences: {

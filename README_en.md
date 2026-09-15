@@ -23,6 +23,7 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: After captu
 ![Toolbar](docs/toolbar.png)
 ![Result Window](docs/result.png)
 ![Color Picker](docs/picker.png)
+![Settings](docs/settings.png)
 
 ## 🚀 Installation
 

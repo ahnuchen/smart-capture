@@ -1,8 +1,9 @@
 // 静态 HTML 的 i18n 应用：data-i18n / data-i18n-ph / data-i18n-title
-// 依赖 window.i18n（由 preload 暴露）
+// 依赖 window.i18n（由 preload 通过 contextBridge 暴露）
 (function () {
   function applyI18n(root) {
     root = root || document;
+    if (!window.i18n) return; // preload 尚未加载完成
     root.querySelectorAll('[data-i18n]').forEach((el) => {
       el.innerHTML = window.i18n.t(el.dataset.i18n);
     });

@@ -7,12 +7,39 @@
   <style>
     :root {
       --bg: #15171f;
+      --bg2: #171a22;
       --panel: #1d2029;
+      --panel2: #262a36;
+      --pre-bg: #101218;
+      --th-bg: #232734;
       --border: rgba(120, 130, 160, 0.25);
       --text: #dbe2f0;
       --muted: #8b93a7;
       --accent: #60a5fa;
       --accent-bg: rgba(96, 165, 250, 0.14);
+      --hover: rgba(255, 255, 255, 0.10);
+      --scroll-thumb: #333949;
+      --scroll-thumb-hover: #454d63;
+      --code-color: #93c5fd;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f6fa;
+        --bg2: #eef0f5;
+        --panel: #ffffff;
+        --panel2: #eef0f5;
+        --pre-bg: #f2f3f8;
+        --th-bg: #e4e7ee;
+        --border: rgba(60, 70, 100, 0.18);
+        --text: #1f2430;
+        --muted: #6b7280;
+        --accent: #2f6fe0;
+        --accent-bg: rgba(47, 111, 224, 0.10);
+        --hover: rgba(0, 0, 0, 0.06);
+        --scroll-thumb: #c3c8d4;
+        --scroll-thumb-hover: #a9b0bf;
+        --code-color: #2f6fe0;
+      }
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
@@ -28,10 +55,10 @@
     ::-webkit-scrollbar { width: 10px; height: 10px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb {
-      background: #333949; border-radius: 6px;
+      background: var(--scroll-thumb); border-radius: 6px;
       border: 2px solid transparent; background-clip: padding-box;
     }
-    ::-webkit-scrollbar-thumb:hover { background-color: #454d63; }
+    ::-webkit-scrollbar-thumb:hover { background-color: var(--scroll-thumb-hover); }
     ::-webkit-scrollbar-corner { background: transparent; }
     header {
       padding: 10px 8px 10px 14px;
@@ -51,7 +78,7 @@
       border: none; background: transparent; color: var(--muted);
       border-radius: 6px; font-size: 13px;
     }
-    .win-ops button:hover { background: rgba(255, 255, 255, 0.10); color: var(--text); }
+    .win-ops button:hover { background: var(--hover); color: var(--text); }
     .win-ops button.close:hover { background: #e81123; color: #fff; }
     .agent-chip {
       display: inline-flex; align-items: center; gap: 7px;
@@ -68,7 +95,7 @@
     .spacer { flex: 1; }
     select, button, textarea, input {
       font: inherit; color: var(--text);
-      background: #262a36; border: 1px solid var(--border);
+      background: var(--panel2); border: 1px solid var(--border);
       border-radius: 7px; padding: 6px 10px; outline: none;
     }
     select:focus, textarea:focus { border-color: var(--accent); }
@@ -79,7 +106,7 @@
     #previewWrap {
       padding: 10px 14px;
       border-bottom: 1px solid var(--border);
-      background: #171a22;
+      background: var(--bg2);
       cursor: pointer;
     }
     #preview {
@@ -124,7 +151,7 @@
       display: none;
       background: rgba(248, 113, 113, 0.1);
       border: 1px solid rgba(248, 113, 113, 0.4);
-      color: #fca5a5;
+      color: #e5484d;
       border-radius: 8px;
       padding: 12px 14px;
       margin-bottom: 12px;
@@ -139,17 +166,17 @@
     .md ul, .md ol { margin: 8px 0 8px 22px; }
     .md li { margin: 3px 0; }
     .md code {
-      background: #262a36; border-radius: 4px; padding: 1.5px 6px;
-      font: 12.5px/1.5 Consolas, "Courier New", monospace; color: #93c5fd;
+      background: var(--panel2); border-radius: 4px; padding: 1.5px 6px;
+      font: 12.5px/1.5 Consolas, "Courier New", monospace; color: var(--code-color);
     }
     .md pre {
-      background: #101218; border: 1px solid var(--border); border-radius: 8px;
+      background: var(--pre-bg); border: 1px solid var(--border); border-radius: 8px;
       padding: 12px 14px; overflow-x: auto; margin: 10px 0;
     }
-    .md pre code { background: none; padding: 0; color: #d7e2f5; font-size: 12.5px; line-height: 1.6; }
+    .md pre code { background: none; padding: 0; color: var(--text); font-size: 12.5px; line-height: 1.6; }
     .md table { border-collapse: collapse; margin: 10px 0; display: block; overflow-x: auto; max-width: 100%; }
     .md th, .md td { border: 1px solid var(--border); padding: 6px 12px; }
-    .md th { background: #232734; }
+    .md th { background: var(--th-bg); }
     .md blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--muted); margin: 10px 0; }
     .md a { color: var(--accent); }
     .md img { max-width: 100%; border-radius: 6px; }
@@ -181,8 +208,9 @@
     <span class="spacer"></span>
     <span class="status no-drag" id="status"><span class="dot"></span><span id="statusText" data-i18n="res.waiting"></span></span>
     <div class="win-ops no-drag">
-      <button id="winMin" data-i18n-title="res.winMin">—</button>
-      <button id="winClose" class="close" data-i18n-title="res.winClose">✕</button>
+      <button id="winMin" data-i18n-title="win.minimize">—</button>
+      <button id="winMax" data-i18n-title="win.maximize">▢</button>
+      <button id="winClose" class="close" data-i18n-title="win.close">✕</button>
     </div>
   </header>
 

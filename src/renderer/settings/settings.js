@@ -1,6 +1,6 @@
 /* 设置窗口逻辑：模型服务 / 智能体 CRUD / 截图行为 / 通用 */
-const api = window.api;
-const i18n = window.i18n;
+const bridge = window.api;
+
 
 let settings = null;
 let editingProviderId = null; // 正在编辑的自定义服务
@@ -12,12 +12,12 @@ let dirty = false;
 const $ = (id) => document.getElementById(id);
 
 // ---------- 初始化 ----------
-api.invoke('settings:get').then((s) => {
+bridge.invoke('settings:get').then((s) => {
   settings = s;
   renderAll();
 });
 
-api.on('settings:updated', ({ settings: s }) => {
+bridge.on('settings:updated', ({ settings: s }) => {
   // 其它入口（托盘）改动时同步刷新；本地有未保存修改时保留编辑状态
   if (dirty) return;
   settings = s;
@@ -105,7 +105,7 @@ function renderModels() {
 
 $('btnAddProvider').addEventListener('click', () => {
   editingProviderId = 'custom_' + Date.now();
-  $('peTitle').textContent = i18n.t('pv.addTitle');
+  $('peTitle').textContent = window.i18n.t('pv.addTitle');
   $('peName').value = '';
   $('peBase').value = '';
   $('peKey').value = '';
@@ -130,8 +130,8 @@ $('peSave').addEventListener('click', () => {
       return { id, name: label || id, vision: (flag || '').toLowerCase() === 'v' };
     })
     .filter((m) => m.id);
-  if (!name || !base) return alert(i18n.t('pv.alertNameBase'));
-  if (!models.length) return alert(i18n.t('pv.alertModels'));
+  if (!name || !base) return alert(window.i18n.t('pv.alertNameBase'));
+  if (!models.length) return alert(window.i18n.t('pv.alertModels'));
   settings.providers[editingProviderId] = { id: editingProviderId, name, baseURL: base, apiKey: key, models };
   if (!isModelInProvider(settings.activeModelId)) {
     settings.activeModelId = (models.find((m) => m.vision) || models[0]).id;
@@ -144,7 +144,7 @@ $('peSave').addEventListener('click', () => {
 });
 
 $('peDelete').addEventListener('click', () => {
-  if (!confirm(i18n.t('pv.delConfirm'))) return;
+  if (!confirm(window.i18n.t('pv.delConfirm'))) return;
   delete settings.providers[editingProviderId];
   if (settings.activeProviderId === editingProviderId) {
     settings.activeProviderId = Object.keys(settings.providers)[0];
@@ -175,14 +175,14 @@ function renderAgents() {
     item.innerHTML = `
       <span class="ico">${a.icon || '🤖'}</span>
       <span class="grow">
-        <div class="name">${a.name} ${a.id === settings.defaultAgentId ? '<span class="badge">' + i18n.t('ag.default') + '</span>' : ''} ${a.builtIn ? '<span class="badge builtin">' + i18n.t('ag.builtin') + '</span>' : ''}</span>
+        <div class="name">${a.name} ${a.id === settings.defaultAgentId ? '<span class="badge">' + window.i18n.t('ag.default') + '</span>' : ''} ${a.builtIn ? '<span class="badge builtin">' + window.i18n.t('ag.builtin') + '</span>' : ''}</span>
         <div class="prompt-preview">${(a.systemPrompt || '').replace(/\n/g, ' ').slice(0, 80)}</div>
       </span>
       <span class="ops">
-        <label class="switch" title="${i18n.t('ag.enabled')}"><input type="checkbox" ${a.enabled !== false ? 'checked' : ''} /></label>
-        <button class="small op-default" title="${i18n.t('ag.setDefault')}">${i18n.t('ag.setDefault')}</button>
-        <button class="small op-edit">${i18n.t('ag.edit')}</button>
-        ${a.builtIn ? '' : '<button class="small danger op-del">' + i18n.t('ag.del') + '</button>'}
+        <label class="switch" title="${window.i18n.t('ag.enabled')}"><input type="checkbox" ${a.enabled !== false ? 'checked' : ''} /></label>
+        <button class="small op-default" title="${window.i18n.t('ag.setDefault')}">${window.i18n.t('ag.setDefault')}</button>
+        <button class="small op-edit">${window.i18n.t('ag.edit')}</button>
+        ${a.builtIn ? '' : '<button class="small danger op-del">' + window.i18n.t('ag.del') + '</button>'}
       </span>
     `;
     item.querySelector('input[type=checkbox]').addEventListener('change', (e) => {
@@ -198,7 +198,7 @@ function renderAgents() {
     item.querySelector('.op-edit').addEventListener('click', () => openAgentEditor(a));
     const del = item.querySelector('.op-del');
     if (del) del.addEventListener('click', () => {
-      if (!confirm(i18n.t('ag.delConfirm', a.name))) return;
+      if (!confirm(window.i18n.t('ag.delConfirm', a.name))) return;
       settings.agents = settings.agents.filter((x) => x.id !== a.id);
       if (settings.defaultAgentId === a.id) settings.defaultAgentId = 'general';
       renderAgents();
@@ -211,13 +211,13 @@ function renderAgents() {
 
 function openAgentEditor(a) {
   editingAgentId = a ? a.id : null;
-  $('aeTitle').textContent = a ? i18n.t('ag.editTitle', a.name) : i18n.t('ag.newTitle');
+  $('aeTitle').textContent = a ? window.i18n.t('ag.editTitle', a.name) : window.i18n.t('ag.newTitle');
   $('aeIcon').value = a ? a.icon || '' : '';
   $('aeName').value = a ? a.name : '';
   $('aePrompt').value = a ? a.systemPrompt || '' : '';
   // 模型下拉：跟随全局 + 当前服务的全部模型
   const sel = $('aeModel');
-  sel.innerHTML = `<option value="">${i18n.t('ag.followGlobal')}</option>`;
+  sel.innerHTML = `<option value="">${window.i18n.t('ag.followGlobal')}</option>`;
   const p = settings.providers[settings.activeProviderId];
   if (p) {
     for (const m of p.models || []) {
@@ -242,8 +242,8 @@ $('aeSave').addEventListener('click', () => {
   const name = $('aeName').value.trim();
   const prompt = $('aePrompt').value.trim();
   const model = $('aeModel').value || undefined;
-  if (!name) return alert(i18n.t('ag.alertName'));
-  if (!prompt) return alert(i18n.t('ag.alertPrompt'));
+  if (!name) return alert(window.i18n.t('ag.alertName'));
+  if (!prompt) return alert(window.i18n.t('ag.alertPrompt'));
   const existing = settings.agents.find((x) => x.id === editingAgentId);
   if (existing) {
     Object.assign(existing, { icon, name, systemPrompt: prompt, model });
@@ -268,7 +268,7 @@ $('aeDelete').addEventListener('click', () => {
 });
 
 $('btnResetAgents').addEventListener('click', async () => {
-  if (!confirm(i18n.t('ag.resetConfirm'))) return;
+  if (!confirm(window.i18n.t('ag.resetConfirm'))) return;
   const res = await bridge.invoke('settings:reset-agents');
   settings = res.settings;
   renderAll();
@@ -345,7 +345,8 @@ function buildAccelerator(e) {
 function renderGeneral() {
   $('openAtLogin').checked = !!settings.openAtLogin;
   $('language').value = settings.language || 'zh';
-  $('aboutText').textContent = i18n.t('gen.about', '1.0.0');
+  $('theme').value = settings.theme || 'system';
+  $('aboutText').textContent = window.i18n.t('gen.about', '1.0.0');
 }
 $('openAtLogin').addEventListener('change', (e) => {
   settings.openAtLogin = e.target.checked;
@@ -353,6 +354,10 @@ $('openAtLogin').addEventListener('change', (e) => {
 });
 $('language').addEventListener('change', (e) => {
   settings.language = e.target.value;
+  markDirty();
+});
+$('theme').addEventListener('change', (e) => {
+  settings.theme = e.target.value;
   markDirty();
 });
 

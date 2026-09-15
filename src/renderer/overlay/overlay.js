@@ -34,8 +34,8 @@ pickMag.height = MAG_PX;
 const magCtx = pickMag.getContext('2d');
 
 // 界面文案本地化
-document.getElementById('tip').innerHTML = window.i18n.t('overlay.tip');
-document.getElementById('pickFmt').textContent = window.i18n.t('overlay.pickFmt');
+document.getElementById('tip').innerHTML = window.window.i18n.t('overlay.tip');
+document.getElementById('pickFmt').textContent = window.window.i18n.t('overlay.pickFmt');
 
 bridge.on('overlay:init', ({ image, displayId: id }) => {
   console.log('[overlay] init received, image length:', image && image.length);

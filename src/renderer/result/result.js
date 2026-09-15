@@ -1,6 +1,6 @@
 /* 结果窗口：接收流式输出，渲染 Markdown + KaTeX，支持追问与切换智能体 */
 const bridge = window.api;
-const i18n = window.i18n;
+
 
 const el = {
   agentChip: document.getElementById('agentChip'),
@@ -44,7 +44,7 @@ bridge.on('result:init', (payload) => {
   state.agents = payload.agents || [];
   rebuildAgentSelect(payload.agent.id);
   if (!payload.vision) {
-    showError(i18n.t('res.visionWarn'));
+    showError(window.i18n.t('res.visionWarn'));
   }
 });
 
@@ -76,7 +76,7 @@ bridge.on('result:stream', ({ kind, delta, message }) => {
       el.reasoningText.textContent = '';
       el.streamTip.style.display = 'flex';
     }
-    setStatus('running', i18n.t('res.analyzing'));
+    setStatus('running', window.i18n.t('res.analyzing'));
     setInputs(false);
   } else if (kind === 'reasoning') {
     state.reasoning += delta;
@@ -94,13 +94,13 @@ bridge.on('result:stream', ({ kind, delta, message }) => {
     state.followupMode = false;
     el.streamTip.style.display = 'none';
     renderAnswer(true);
-    setStatus('', i18n.t('res.done'));
+    setStatus('', window.i18n.t('res.done'));
     setInputs(true);
   } else if (kind === 'error') {
     state.streaming = false;
     state.followupMode = false;
     el.streamTip.style.display = 'none';
-    setStatus('error', i18n.t('res.error'));
+    setStatus('error', window.i18n.t('res.error'));
     showError(message || 'Unknown error');
     setInputs(true);
   }
@@ -114,7 +114,7 @@ function showError(msg) {
   el.errorBox.appendChild(p);
   if (true) {
     const btn = document.createElement('button');
-    btn.textContent = i18n.t('res.retry');
+    btn.textContent = window.i18n.t('res.retry');
     btn.addEventListener('click', () => act({ type: 'reanalyze' }));
     el.errorBox.appendChild(btn);
   }
@@ -145,7 +145,7 @@ function scheduleRender() {
 
 function renderAnswer(final) {
   const nearBottom = el.content.scrollHeight - el.content.scrollTop - el.content.clientHeight < 90;
-  const html = DOMPurify.sanitize(marked.parse(state.content || (final ? i18n.t('res.emptyContent') : '')));
+  const html = DOMPurify.sanitize(marked.parse(state.content || (final ? window.i18n.t('res.emptyContent') : '')));
   el.answer.innerHTML = html;
   // KaTeX 渲染（流式期间每 600ms 一次，结束时必渲）
   const now = Date.now();
@@ -212,12 +212,12 @@ el.btnCopyResult.addEventListener('click', () => {
   const text = state.content;
   if (!text) return;
   bridge.invoke('result:action', { type: 'copy-result', text });
-  flashButton(el.btnCopyResult, i18n.t('res.copied'));
+  flashButton(el.btnCopyResult, window.i18n.t('res.copied'));
 });
 el.btnSaveImage.addEventListener('click', () => act({ type: 'save-image' }));
 el.btnCopyImage.addEventListener('click', () => {
   act({ type: 'copy-image' });
-  flashButton(el.btnCopyImage, i18n.t('res.copied'));
+  flashButton(el.btnCopyImage, window.i18n.t('res.copied'));
 });
 
 function flashButton(btn, text) {
@@ -236,6 +236,7 @@ function act(payload) {
 
 // ---- 自定义标题栏窗口控制 ----
 document.getElementById('winMin').addEventListener('click', () => bridge.invoke('win:control', { action: 'minimize' }));
+document.getElementById('winMax').addEventListener('click', () => bridge.invoke('win:control', { action: 'maximize' }));
 document.getElementById('winClose').addEventListener('click', () => bridge.invoke('win:control', { action: 'close' }));
 
 // ESC 关闭（输入框聚焦时不触发）

@@ -1,5 +1,6 @@
 /* 浮动工具条：完成 / 下载 / 设置 / 退出 + 智能体按钮，渲染后向主进程上报尺寸 */
 const bridge = window.api;
+
 const rowActions = document.getElementById('rowActions');
 const rowAgents = document.getElementById('rowAgents');
 
@@ -22,28 +23,32 @@ bridge.on('toolbar:init', ({ agents, defaultAgentId, autoAnalyze }) => {
   rowActions.innerHTML = '';
   rowAgents.innerHTML = '';
 
-  rowActions.appendChild(
-    btn({
-      icon: '✔', label: i18n.t('tb.done'), cls: 'primary',
-      title: i18n.t('tb.doneTitle'),
-      onClick: () => act({ type: 'done' }),
-    })
-  );
-  rowActions.appendChild(
-    btn({ icon: '⬇', label: i18n.t('tb.download'), title: i18n.t('tb.downloadTitle'), onClick: () => act({ type: 'download' }) })
-  );
-  rowActions.appendChild(sep());
-  rowActions.appendChild(
-    btn({ icon: '⚙', label: i18n.t('tb.settings'), title: i18n.t('tb.settingsTitle'), onClick: () => act({ type: 'settings' }) })
-  );
-  rowActions.appendChild(
-    btn({ icon: '✕', label: i18n.t('tb.exit'), cls: 'exit', title: i18n.t('tb.exitTitle'), onClick: () => act({ type: 'exit' }) })
-  );
+  try {
+    rowActions.appendChild(
+      btn({
+        icon: '✔', label: window.i18n.t('tb.done'), cls: 'primary',
+        title: window.i18n.t('tb.doneTitle'),
+        onClick: () => act({ type: 'done' }),
+      })
+    );
+    rowActions.appendChild(
+      btn({ icon: '⬇', label: window.i18n.t('tb.download'), title: window.i18n.t('tb.downloadTitle'), onClick: () => act({ type: 'download' }) })
+    );
+    rowActions.appendChild(sep());
+    rowActions.appendChild(
+      btn({ icon: '', label: window.i18n.t('tb.settings'), title: window.i18n.t('tb.settingsTitle'), onClick: () => act({ type: 'settings' }) })
+    );
+    rowActions.appendChild(
+      btn({ icon: '✕', label: window.i18n.t('tb.exit'), cls: 'exit', title: window.i18n.t('tb.exitTitle'), onClick: () => act({ type: 'exit' }) })
+    );
+  } catch (e) {
+    console.error('[toolbar] i18n error:', e);
+  }
 
   if (!agents.length) {
     const hint = document.createElement('span');
     hint.className = 'hint';
-    hint.textContent = i18n.t('tb.noAgents');
+    hint.textContent = window.i18n.t('tb.noAgents');
     rowAgents.appendChild(hint);
   } else {
     for (const a of agents) {
@@ -53,7 +58,7 @@ bridge.on('toolbar:init', ({ agents, defaultAgentId, autoAnalyze }) => {
           icon: a.icon || '🤖',
           label: a.name,
           cls: 'agent' + (isDefault ? ' default' : ''),
-          title: (a.systemPrompt || '').slice(0, 120) + (isDefault ? '\n' + i18n.t(autoAnalyze ? 'tb.defaultAuto' : 'tb.default') : ''),
+          title: (a.systemPrompt || '').slice(0, 120) + (isDefault ? '\n' + window.i18n.t(autoAnalyze ? 'tb.defaultAuto' : 'tb.default') : ''),
           onClick: () => act({ type: 'agent', agentId: a.id }),
         })
       );
@@ -61,7 +66,7 @@ bridge.on('toolbar:init', ({ agents, defaultAgentId, autoAnalyze }) => {
     if (autoAnalyze) {
       const hint = document.createElement('span');
       hint.className = 'hint';
-      hint.textContent = i18n.t('tb.autoHint');
+      hint.textContent = window.i18n.t('tb.autoHint');
       rowAgents.appendChild(hint);
     }
   }

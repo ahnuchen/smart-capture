@@ -8,6 +8,7 @@ const { setLang } = require('../shared/i18n');
 
 const DEFAULT_SETTINGS = {
   language: 'zh',
+  theme: 'system',
   providers: { [BUILTIN_PROVIDER_ID]: BUILTIN_PROVIDER },
   activeProviderId: BUILTIN_PROVIDER_ID,
   activeModelId: 'zhipu/glm-4v-flash',

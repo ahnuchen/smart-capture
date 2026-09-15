@@ -23,6 +23,7 @@
 ![工具条](docs/toolbar.png)
 ![结果窗口](docs/result.png)
 ![取色器](docs/picker.png)
+![设置](docs/settings.png)
 
 ## 🚀 安装
 

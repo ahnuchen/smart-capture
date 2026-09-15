@@ -1,17 +1,6 @@
 // 渲染进程与主进程之间的安全桥（contextIsolation 开启）
+// 注意：preload 运行在沙箱中，不能 require 项目文件，i18n 通过 sendSync 向主进程请求
 const { contextBridge, ipcRenderer } = require('electron');
-const { setLang, getLang, t } = require('../shared/i18n');
-
-// 惰性从主进程同步当前语言（窗口每次新建都会重新取）
-let langLoaded = false;
-function ensureLang() {
-  if (!langLoaded) {
-    try {
-      setLang(ipcRenderer.sendSync('i18n:lang'));
-    } catch (_) { /* 保持默认 zh */ }
-    langLoaded = true;
-  }
-}
 
 const INVOKABLE = new Set([
   'shot:selection',
@@ -45,7 +34,7 @@ const LISTENABLE = new Set([
 
 contextBridge.exposeInMainWorld('api', {
   invoke: (channel, payload) => {
-    if (!INVOKABLE.has(channel)) return Promise.reject(new Error('不允许的调用通道: ' + channel));
+    if (!INVOKABLE.has(channel)) return Promise.reject(new Error('Disallowed channel: ' + channel));
     return ipcRenderer.invoke(channel, payload);
   },
   on: (channel, cb) => {
@@ -58,11 +47,17 @@ contextBridge.exposeInMainWorld('api', {
 
 contextBridge.exposeInMainWorld('i18n', {
   lang: () => {
-    ensureLang();
-    return getLang();
+    try {
+      return ipcRenderer.sendSync('i18n:lang');
+    } catch (_) {
+      return 'zh';
+    }
   },
   t: (key, ...args) => {
-    ensureLang();
-    return t(key, ...args);
+    try {
+      return ipcRenderer.sendSync('i18n:t', { key, args });
+    } catch (_) {
+      return key;
+    }
   },
 });

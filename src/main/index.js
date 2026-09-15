@@ -1,5 +1,5 @@
 // 应用入口：生命周期、托盘、全局快捷键、IPC 装配
-const { app, Tray, Menu, globalShortcut, BrowserWindow, ipcMain, dialog, nativeImage, systemPreferences } = require('electron');
+const { app, Tray, Menu, globalShortcut, BrowserWindow, ipcMain, dialog, nativeImage, systemPreferences, nativeTheme } = require('electron');
 const path = require('path');
 const { Store } = require('./store');
 const { ScreenshotManager } = require('./screenshot');
@@ -16,6 +16,12 @@ let screenshot = null;
 let tray = null;
 let settingsWin = null;
 
+// ---------- 主题 ----------
+function applyTheme() {
+  const theme = ['system', 'dark', 'light'].includes(store.data.theme) ? store.data.theme : 'system';
+  nativeTheme.themeSource = theme;
+}
+
 // ---------- 设置窗口 ----------
 function openSettings() {
   if (settingsWin && !settingsWin.isDestroyed()) {
@@ -30,7 +36,7 @@ function openSettings() {
     minHeight: 600,
     show: false,
     frame: false,
-    backgroundColor: '#15171f',
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#15171f' : '#f5f6fa',
     title: t('win.settings'),
     icon: ICON,
     webPreferences: {
@@ -121,11 +127,14 @@ function setupIpc() {
     const prevShortcut = store.data.shortcut;
     const prevLogin = store.data.openAtLogin;
     const prevLang = store.data.language;
+    const prevTheme = store.data.theme;
     store.data = store.patch(normalizeSettings(settings));
     if (store.data.language !== prevLang) setLang(store.data.language);
+    if (store.data.theme !== prevTheme) applyTheme();
     if (store.data.shortcut !== prevShortcut) registerShortcut();
     if (store.data.openAtLogin !== prevLogin) {
-      app.setLoginItemSettings({ openAtLogin: !!store.data.openAtLogin });
+      applyTheme();
+    app.setLoginItemSettings({ openAtLogin: !!store.data.openAtLogin });
     }
     broadcastSettings();
     return { ok: true, settings: JSON.parse(JSON.stringify(store.data)) };
@@ -153,12 +162,18 @@ function setupIpc() {
   ipcMain.on('i18n:lang', (e) => {
     e.returnValue = (store && store.data.language) || 'zh';
   });
+
+  // 渲染层同步获取翻译文本
+  ipcMain.on('i18n:t', (e, { key, args }) => {
+    e.returnValue = t(key, ...(args || []));
+  });
 }
 
 // 保存前的兜底校验，防止设置损坏导致应用不可用
 function normalizeSettings(s) {
   if (!s || typeof s !== 'object') return {};
   if (s.language !== 'en' && s.language !== 'zh') s.language = 'zh';
+  if (!['system', 'dark', 'light'].includes(s.theme)) s.theme = 'system';
   if (!s.providers || typeof s.providers !== 'object' || !Object.keys(s.providers).length) delete s.providers;
   if (!Array.isArray(s.agents) || !s.agents.length) delete s.agents;
   if (s.defaultAgentId && !(s.agents || store.data.agents).some((a) => a.id === s.defaultAgentId)) {
@@ -199,6 +214,7 @@ if (!gotLock) {
       } catch (_) { /* 忽略 */ }
     }
 
+    applyTheme();
     app.setLoginItemSettings({ openAtLogin: !!store.data.openAtLogin });
     createTray();
     registerShortcut();
