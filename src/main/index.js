@@ -331,11 +331,13 @@ if (!gotLock) {
       if (settingsWin && !settingsWin.isDestroyed()) {
         await snap(settingsWin, 'settings.png');
         const info = await settingsWin.webContents.executeJavaScript(`(() => {
+          const names = Array.from(document.querySelectorAll('#agentList .agent-item .name')).map((el) => el.textContent.trim().split(' ')[0]);
           return {
             providers: document.querySelectorAll('#providerList .model-item').length,
             models: document.querySelectorAll('#modelList .model-item').length,
             agents: document.querySelectorAll('#agentList .agent-item').length,
             shortcut: document.getElementById('shortcutDisplay').textContent,
+            agentNames: names,
           };
         })()`);
         console.log('[selftest] settings DOM:', JSON.stringify(info));

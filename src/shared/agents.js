@@ -107,26 +107,45 @@ const BUILTIN_AGENTS = [
 ];
 
 // 按语言解析内置智能体的名称 / 提示词（用户自定义值优先）
+// 若存储对象缺失双语字段（如旧数据迁移前），回退到内置定义
+function resolveDef(agent) {
+  return BUILTIN_AGENTS.find((d) => d.id === agent.id) || null;
+}
 function agentName(agent, lang) {
   if (agent.name) return agent.name;
-  return (lang === 'en' ? agent.nameEn : agent.nameZh) || agent.nameZh || agent.nameEn || '';
+  const src = (agent.nameZh || agent.nameEn) ? agent : resolveDef(agent) || {};
+  return (lang === 'en' ? src.nameEn : src.nameZh) || src.nameZh || src.nameEn || '';
 }
 function agentPrompt(agent, lang) {
   if (agent.systemPrompt) return agent.systemPrompt;
-  return (lang === 'en' ? agent.promptEn : agent.promptZh) || agent.promptZh || '';
+  const src = (agent.promptZh || agent.promptEn) ? agent : resolveDef(agent) || {};
+  return (lang === 'en' ? src.promptEn : src.promptZh) || src.promptZh || src.promptEn || '';
 }
 
-// 迁移旧数据：旧的内置智能体把中文名/提示词写死在 name/systemPrompt 里，
-// 若与内置默认一致则清掉，交给语言切换本地化；被用户改过的保留。
+// 迁移旧数据：旧版内置智能体把中文名/提示词写死在 name/systemPrompt 里，
+// 若与内置默认一致则清掉，并补齐双语字段（从内置定义合并），交给语言切换本地化；被用户改过的保留。
 function migrateStoredAgents(agents) {
   return agents.map((a) => {
     const def = BUILTIN_AGENTS.find((d) => d.id === a.id);
     if (!def) return a;
-    const out = { ...a };
-    if (out.name === def.nameZh) delete out.name;
-    if (out.systemPrompt === def.promptZh) delete out.systemPrompt;
-    return out;
+    // 以内置定义为基础合并存量字段：双语字段始终补齐，用户覆盖（name/systemPrompt/icon 等）优先
+    const merged = {
+      ...def,
+      ...a,
+      // 显式覆盖与默认值一致的清掉（旧版写死的中文名），恢复本地化能力
+      ...(a.name === def.nameZh ? { name: undefined } : {}),
+      ...(a.systemPrompt === def.promptZh ? { systemPrompt: undefined } : {}),
+    };
+    if (merged.name === undefined) delete merged.name;
+    if (merged.systemPrompt === undefined) delete merged.systemPrompt;
+    return merged;
   });
 }
 
-module.exports = { BUILTIN_AGENTS, agentName, agentPrompt, migrateStoredAgents };
+// UMD 导出：主进程 require / 渲染层 script 标签共用
+const agentsApi = { BUILTIN_AGENTS, agentName, agentPrompt, migrateStoredAgents };
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = agentsApi;
+} else if (typeof window !== 'undefined') {
+  window.AgentsShared = agentsApi;
+}

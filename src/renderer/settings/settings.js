@@ -1,5 +1,9 @@
 /* 设置窗口逻辑：模型服务 / 智能体 CRUD / 截图行为 / 通用 */
 const bridge = window.api;
+const AgentsShared = window.AgentsShared;
+const agentLang = () => window.i18n.lang();
+const agentDisplayName = (a) => AgentsShared.agentName(a, agentLang());
+const agentDisplayPrompt = (a) => AgentsShared.agentPrompt(a, agentLang());
 
 
 let settings = null;
@@ -175,8 +179,8 @@ function renderAgents() {
     item.innerHTML = `
       <span class="ico">${a.icon || '🤖'}</span>
       <span class="grow">
-        <div class="name">${a.name} ${a.id === settings.defaultAgentId ? '<span class="badge">' + window.i18n.t('ag.default') + '</span>' : ''} ${a.builtIn ? '<span class="badge builtin">' + window.i18n.t('ag.builtin') + '</span>' : ''}</span>
-        <div class="prompt-preview">${(a.systemPrompt || '').replace(/\n/g, ' ').slice(0, 80)}</div>
+        <div class="name">${agentDisplayName(a)} ${a.id === settings.defaultAgentId ? '<span class="badge">' + window.i18n.t('ag.default') + '</span>' : ''} ${a.builtIn ? '<span class="badge builtin">' + window.i18n.t('ag.builtin') + '</span>' : ''}</span>
+        <div class="prompt-preview">${agentDisplayPrompt(a).replace(/\n/g, ' ').slice(0, 80)}</div>
       </span>
       <span class="ops">
         <label class="switch" title="${window.i18n.t('ag.enabled')}"><input type="checkbox" ${a.enabled !== false ? 'checked' : ''} /></label>
@@ -198,7 +202,7 @@ function renderAgents() {
     item.querySelector('.op-edit').addEventListener('click', () => openAgentEditor(a));
     const del = item.querySelector('.op-del');
     if (del) del.addEventListener('click', () => {
-      if (!confirm(window.i18n.t('ag.delConfirm', a.name))) return;
+      if (!confirm(window.i18n.t('ag.delConfirm', agentDisplayName(a)))) return;
       settings.agents = settings.agents.filter((x) => x.id !== a.id);
       if (settings.defaultAgentId === a.id) settings.defaultAgentId = 'general';
       renderAgents();
@@ -211,10 +215,10 @@ function renderAgents() {
 
 function openAgentEditor(a) {
   editingAgentId = a ? a.id : null;
-  $('aeTitle').textContent = a ? window.i18n.t('ag.editTitle', a.name) : window.i18n.t('ag.newTitle');
+  $('aeTitle').textContent = a ? window.i18n.t('ag.editTitle', agentDisplayName(a)) : window.i18n.t('ag.newTitle');
   $('aeIcon').value = a ? a.icon || '' : '';
-  $('aeName').value = a ? a.name : '';
-  $('aePrompt').value = a ? a.systemPrompt || '' : '';
+  $('aeName').value = a ? agentDisplayName(a) : '';
+  $('aePrompt').value = a ? agentDisplayPrompt(a) : '';
   // 模型下拉：跟随全局 + 当前服务的全部模型
   const sel = $('aeModel');
   sel.innerHTML = `<option value="">${window.i18n.t('ag.followGlobal')}</option>`;
@@ -281,7 +285,7 @@ function renderCapture() {
   for (const a of settings.agents) {
     const opt = document.createElement('option');
     opt.value = a.id;
-    opt.textContent = `${a.icon || '🤖'} ${a.name}`;
+    opt.textContent = `${a.icon || '🤖'} ${agentDisplayName(a)}`;
     if (a.id === settings.defaultAgentId) opt.selected = true;
     sel.appendChild(opt);
   }
