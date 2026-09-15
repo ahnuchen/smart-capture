@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>截图</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; cursor: crosshair; }
+    #bg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      -webkit-user-drag: none;
+    }
+    #dim {
+      position: absolute; inset: 0;
+      background: rgba(8, 10, 18, 0.22);
+    }
+    /* 选区：box-shadow 制造选区外轻微变暗、选区内清晰 */
+    #sel {
+      position: absolute;
+      display: none;
+      border: 1px solid rgba(96, 165, 250, 0.95);
+      box-shadow: 0 0 0 100000px rgba(8, 10, 18, 0.22);
+      background-repeat: no-repeat;
+      pointer-events: none;
+    }
+    #sel.confirm { border: 1.5px solid #3b82f6; pointer-events: auto; }
+    #size {
+      position: absolute;
+      display: none;
+      background: rgba(20, 22, 32, 0.85);
+      color: #dbeafe;
+      font: 12px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(96, 165, 250, 0.4);
+      white-space: nowrap;
+    }
+    #tip {
+      position: absolute;
+      display: none;
+      background: rgba(20, 22, 32, 0.85);
+      color: #cbd5e1;
+      font: 12px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      white-space: nowrap;
+    }
+    #tip b { color: #93c5fd; font-weight: 600; }
+    body.selecting #dim { display: none; }
+
+    /* 十字辅助线 */
+    #crossV, #crossH { position: absolute; display: none; pointer-events: none; background: rgba(255, 255, 255, 0.35); z-index: 5; }
+    #crossV { top: 0; bottom: 0; width: 1px; }
+    #crossH { left: 0; right: 0; height: 1px; }
+
+    /* 取色器 */
+    #picker {
+      position: absolute;
+      display: none;
+      z-index: 6;
+      pointer-events: none;
+      background: rgba(21, 23, 31, 0.94);
+      border: 1px solid rgba(120, 130, 160, 0.45);
+      border-radius: 10px;
+      padding: 7px;
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+      color: #dbe2f0;
+      font: 12px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    #pickMag { display: block; border-radius: 5px; image-rendering: pixelated; }
+    #pickRow { display: flex; align-items: center; gap: 7px; margin-top: 6px; }
+    #pickSwatch { width: 15px; height: 15px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.45); flex: none; }
+    #pickText { font: 12px Consolas, "Courier New", monospace; }
+    #pickPos { color: #8b93a7; margin-top: 3px; font-size: 11px; }
+    #pickFmt { color: #64748b; margin-top: 1px; font-size: 10.5px; }
+  </style>
+</head>
+<body>
+  <img id="bg" draggable="false" />
+  <div id="dim"></div>
+  <div id="sel"></div>
+  <div id="size"></div>
+  <div id="tip"><b>Enter / 双击 / ✔完成</b> 复制并完成 · <b>ESC</b> 重新选区</div>
+  <div id="crossV"></div>
+  <div id="crossH"></div>
+  <div id="picker">
+    <canvas id="pickMag"></canvas>
+    <div id="pickRow"><span id="pickSwatch"></span><span id="pickText"></span></div>
+    <div id="pickPos"></div>
+    <div id="pickFmt">Shift 切换 HEX / RGB / HSL</div>
+  </div>
+  <script src="overlay.js"></script>
+</body>
+</html>

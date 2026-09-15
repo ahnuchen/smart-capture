@@ -1,0 +1,30 @@
+appId: com.smartcapture.app
+productName: 智能截图
+directories:
+  output: dist
+files:
+  - src/**/*
+  - assets/**/*
+  - package.json
+  - "!node_modules/.bin"
+icon: assets/icon.png
+win:
+  icon: assets/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: SmartCapture-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: 智能截图
+mac:
+  icon: assets/icon.png
+  target:
+    - dmg
+  category: public.app-category.utilities
+  artifactName: SmartCapture-${version}.${ext}
+dmg:
+  title: 智能截图 ${version}

@@ -1,0 +1,363 @@
+// 截图会话编排：屏幕捕获 → 覆盖窗选区 → 浮动工具条 → 分析
+const { BrowserWindow, desktopCapturer, screen, dialog, clipboard, nativeImage, globalShortcut } = require('electron');
+const path = require('path');
+const { t } = require('../shared/i18n');
+const { agentName } = require('../shared/agents');
+
+const PRELOAD = path.join(__dirname, '../preload/preload.js');
+const DEBUG = !!process.argv.find((a) => a === '--selftest' || a === '--dev');
+
+function attachConsoleTag(win, tag) {
+  if (!DEBUG) return;
+  win.webContents.on('console-message', (_e, _level, message, line, source) => {
+    console.log(`[${tag}]:`, message, `(${source}:${line})`);
+  });
+}
+
+class ScreenshotManager {
+  constructor({ store, analysis, getSettingsWindow, onOpenSettings }) {
+    this.store = store;
+    this.analysis = analysis;
+    this.getSettingsWindow = getSettingsWindow;
+    this.onOpenSettings = onOpenSettings;
+    this.overlays = []; // {win, display}
+    this.toolbar = null;
+    this.active = false; // 截图会话进行中
+    this.selection = null; // {displayId, rect(global), fullPng, apiImg}
+    this.hiddenWindows = []; // 截图期间临时隐藏的窗口
+    this.autoFired = false;
+  }
+
+  isActive() {
+    return this.active;
+  }
+
+  async start(options = {}) {
+    if (this.active) return;
+    this.active = true;
+    this.autoFired = false;
+    this.selection = null;
+
+    // 隐藏本应用窗口，避免被拍进画面
+    this.hiddenWindows = [];
+    const settingsWin = this.getSettingsWindow && this.getSettingsWindow();
+    if (settingsWin && !settingsWin.isDestroyed() && settingsWin.isVisible()) {
+      settingsWin.hide();
+      this.hiddenWindows.push(settingsWin);
+    }
+    if (this.analysis.resultWin && !this.analysis.resultWin.isDestroyed() && this.analysis.resultWin.isVisible()) {
+      this.analysis.resultWin.hide();
+      this.hiddenWindows.push(this.analysis.resultWin);
+    }
+
+    try {
+      const captures = options.fakeImage
+        ? [{ display: screen.getPrimaryDisplay(), image: options.fakeImage }]
+        : await this.captureDisplays();
+      if (!captures.length) {
+        throw new Error(t('err.noCapture'));
+      }
+      this.createOverlays(captures);
+      this.registerTempKeys();
+    } catch (e) {
+      console.error('[screenshot] 启动失败:', e);
+      this.finish();
+      dialog.showErrorBox(t('dialog.captureFail.title'), t('dialog.captureFail.msg', e.message));
+    }
+  }
+
+  async captureDisplays() {
+    const displays = screen.getAllDisplays();
+    const out = [];
+    for (const d of displays) {
+      const sf = d.scaleFactor || 1;
+      const w = Math.round(d.size.width * sf);
+      const h = Math.round(d.size.height * sf);
+      let source = null;
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen'],
+          thumbnailSize: { width: w, height: h },
+        });
+        source = sources.find((s) => s.display_id === String(d.id)) || sources[0] || null;
+      } catch (e) {
+        console.error('[screenshot] 捕获显示器失败:', e.message);
+      }
+      if (source && !source.thumbnail.isEmpty()) {
+        out.push({ display: d, image: source.thumbnail.toDataURL() });
+      }
+    }
+    return out;
+  }
+
+  createOverlays(captures) {
+    for (const { display, image } of captures) {
+      const win = new BrowserWindow({
+        x: display.bounds.x,
+        y: display.bounds.y,
+        width: display.bounds.width,
+        height: display.bounds.height,
+        frame: false,
+        transparent: true,
+        resizable: false,
+        movable: false,
+        minimizable: false,
+        fullscreenable: false,
+        skipTaskbar: true,
+        hasShadow: false,
+        show: false,
+        webPreferences: {
+          preload: PRELOAD,
+          contextIsolation: true,
+          nodeIntegration: false,
+          backgroundThrottling: false,
+        },
+      });
+      win.setMenu(null);
+      win.setAlwaysOnTop(true, 'screen-saver');
+      attachConsoleTag(win, `overlay-${display.id}`);
+      const entry = { win, display };
+      this.overlays.push(entry);
+      win.loadFile(path.join(__dirname, '../renderer/overlay/index.html'));
+      win.once('ready-to-show', () => {
+        if (win.isDestroyed()) return;
+        win.setBounds(display.bounds);
+        win.show();
+      });
+      win.webContents.once('did-finish-load', () => {
+        if (win.isDestroyed()) return;
+        win.webContents.send('overlay:init', { image, displayId: display.id });
+        win.focus();
+      });
+      win.on('closed', () => {
+        this.overlays = this.overlays.filter((o) => o.win !== win);
+      });
+    }
+  }
+
+  // 截图期间临时接管 Escape / Enter（覆盖窗失焦时依然可用）
+  registerTempKeys() {
+    try {
+      globalShortcut.register('Escape', () => this.broadcastOverlay('overlay:escape'));
+      globalShortcut.register('Return', () => this.broadcastOverlay('overlay:enter'));
+    } catch (e) {
+      console.warn('[screenshot] 临时快捷键注册失败:', e.message);
+    }
+  }
+
+  unregisterTempKeys() {
+    try {
+      globalShortcut.unregister('Escape');
+      globalShortcut.unregister('Return');
+    } catch (_) { /* 忽略 */ }
+  }
+
+  broadcastOverlay(channel) {
+    for (const o of this.overlays) {
+      if (!o.win.isDestroyed()) o.win.webContents.send(channel);
+    }
+  }
+
+  get activeOverlay() {
+    return this.overlays.find((o) => o.display.id === (this.selection && this.selection.displayId)) || this.overlays[0];
+  }
+
+  // ---- 来自覆盖窗渲染进程的事件 ----
+  handleSelection({ displayId, rect, fullPng, apiImg }) {
+    console.log('[screenshot] selection:', JSON.stringify({ displayId, rect, fullLen: fullPng && fullPng.length, apiLen: apiImg && apiImg.length }));
+    if (!this.active || this.selection) {
+      // 已有选区时再次拖拽 = 重新选区
+      if (this.selection) this.handleReselect();
+      else return;
+    }
+    const entry = this.overlays.find((o) => o.display.id === displayId);
+    if (!entry) return;
+    const b = entry.display.bounds;
+    this.selection = {
+      displayId,
+      rect: { x: b.x + rect.x, y: b.y + rect.y, w: rect.w, h: rect.h },
+      fullPng,
+      apiImg,
+    };
+    // 关闭其它显示器的覆盖窗，只保留当前
+    for (const o of this.overlays) {
+      if (o.display.id !== displayId && !o.win.isDestroyed()) o.win.close();
+    }
+    this.showToolbar();
+
+    const s = this.store.data;
+    if (s.autoAnalyze && !this.autoFired) {
+      const agent = this.store.getAgent(s.defaultAgentId);
+      if (agent) {
+        this.autoFired = true;
+        this.startAnalysis(agent.id, 'auto');
+      }
+    }
+  }
+
+  handleReselect() {
+    this.closeToolbar();
+    this.selection = null;
+  }
+
+  handleCanceled() {
+    // 取消所有动作与 AI 分析
+    this.analysis.cancelAll();
+    this.finish();
+  }
+
+  handleCopyFinish() {
+    if (!this.selection) return;
+    clipboard.writeImage(nativeImage.createFromDataURL(this.selection.fullPng));
+    this.finish();
+  }
+
+  // ---- 浮动工具条 ----
+  showToolbar() {
+    if (!this.selection) return;
+    this.closeToolbar();
+    const s = this.store.data;
+    const win = new BrowserWindow({
+      show: false,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      focusable: false, // 不抢覆盖窗焦点
+      webPreferences: {
+        preload: PRELOAD,
+        contextIsolation: true,
+        nodeIntegration: false,
+        backgroundThrottling: false,
+      },
+    });
+    win.setMenu(null);
+    win.setAlwaysOnTop(true, 'screen-saver');
+    attachConsoleTag(win, 'toolbar');
+    this.toolbar = win;
+    win.loadFile(path.join(__dirname, '../renderer/toolbar/index.html'));
+    win.webContents.once('did-finish-load', () => {
+      if (win.isDestroyed()) return;
+      const lang = this.store.data.language || 'zh';
+      win.webContents.send('toolbar:init', {
+        agents: this.store.getEnabledAgents().map((a) => ({ ...a, name: agentName(a, lang) })),
+        defaultAgentId: s.defaultAgentId,
+        autoAnalyze: s.autoAnalyze,
+      });
+    });
+    win.on('closed', () => {
+      if (this.toolbar === win) this.toolbar = null;
+    });
+  }
+
+  layoutToolbar({ w, h }) {
+    const win = this.toolbar;
+    console.log('[screenshot] layoutToolbar:', JSON.stringify({ w, h, has: !!win }));
+    if (!win || win.isDestroyed() || !this.selection) return;
+    const entry = this.overlays.find((o) => o.display.id === this.selection.displayId);
+    const wa = entry ? entry.display.workArea : screen.getPrimaryDisplay().workArea;
+    const sel = this.selection.rect;
+    let x = sel.x + sel.w - w;
+    x = Math.min(Math.max(x, wa.x + 8), wa.x + wa.width - w - 8);
+    let y = sel.y + sel.h + 10;
+    if (y + h > wa.y + wa.height) y = sel.y - h - 10;
+    if (y < wa.y) y = Math.min(sel.y + sel.h + 10, wa.y + wa.height - h);
+    win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.ceil(w), height: Math.ceil(h) });
+    win.showInactive();
+  }
+
+  closeToolbar() {
+    if (this.toolbar && !this.toolbar.isDestroyed()) this.toolbar.close();
+    this.toolbar = null;
+  }
+
+  // ---- 工具条动作 ----
+  async handleToolbarAction({ type, agentId }) {
+    switch (type) {
+      case 'agent': {
+        const agent = this.store.getAgent(agentId);
+        if (!agent) return;
+        this.startAnalysis(agent.id, 'manual');
+        this.finish(); // 关闭覆盖窗与工具条，结果窗口接管
+        break;
+      }
+      case 'done':
+        // 完成：复制到剪贴板并收起截图（若有分析结果则保留展示）
+        if (!this.selection) return;
+        clipboard.writeImage(nativeImage.createFromDataURL(this.selection.fullPng));
+        this.finish();
+        break;
+      case 'exit':
+        // 退出：取消所有动作与 AI 分析
+        this.analysis.cancelAll();
+        this.finish();
+        break;
+      case 'download': {
+        if (!this.selection) return;
+        const png = this.selection.fullPng;
+        // 先备份到剪贴板，避免用户取消保存后丢失截图
+        clipboard.writeImage(nativeImage.createFromDataURL(png));
+        this.finish();
+        const ts = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const name = `SmartCapture_${ts.getFullYear()}${pad(ts.getMonth() + 1)}${pad(ts.getDate())}_${pad(ts.getHours())}${pad(ts.getMinutes())}${pad(ts.getSeconds())}.png`;
+        const { canceled, filePath } = await dialog.showSaveDialog({
+          title: t('dialog.save.title'),
+          defaultPath: name,
+          filters: [{ name: 'PNG', extensions: ['png'] }],
+        });
+        if (!canceled && filePath) {
+          try {
+            require('fs').writeFileSync(filePath, nativeImage.createFromDataURL(png).toPNG());
+          } catch (e) {
+            dialog.showErrorBox(t('dialog.saveError.title'), t('dialog.saveError.msg', e.message));
+          }
+        }
+        break;
+      }
+      case 'settings':
+        this.finish();
+        if (this.onOpenSettings) this.onOpenSettings();
+        break;
+      case 'close':
+        // 兼容旧调用：等同退出
+        this.analysis.cancelAll();
+        this.finish();
+        break;
+    }
+  }
+
+  startAnalysis(agentId, source) {
+    if (!this.selection) return;
+    this.analysis.start({
+      imageFull: this.selection.fullPng,
+      imageApi: this.selection.apiImg,
+      agentId,
+      sourceRect: this.selection.rect,
+      source,
+    });
+  }
+
+  // ---- 收尾：恢复隐藏窗口（已被销毁的自动跳过） ----
+  finish() {
+    this.unregisterTempKeys();
+    for (const o of this.overlays) {
+      if (!o.win.isDestroyed()) o.win.close();
+    }
+    this.overlays = [];
+    this.closeToolbar();
+    this.selection = null;
+    this.active = false;
+    this.analysis.onShotFinished();
+    for (const w of this.hiddenWindows) {
+      if (!w.isDestroyed()) w.show();
+    }
+    this.hiddenWindows = [];
+  }
+}
+
+module.exports = { ScreenshotManager };

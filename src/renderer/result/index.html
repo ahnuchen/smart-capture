@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>分析结果</title>
+  <link rel="stylesheet" href="../../../node_modules/katex/dist/katex.min.css" />
+  <style>
+    :root {
+      --bg: #15171f;
+      --panel: #1d2029;
+      --border: rgba(120, 130, 160, 0.25);
+      --text: #dbe2f0;
+      --muted: #8b93a7;
+      --accent: #60a5fa;
+      --accent-bg: rgba(96, 165, 250, 0.14);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.65 "Segoe UI", "Microsoft YaHei", sans-serif;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    /* 全局滚动条 */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: #333949; border-radius: 6px;
+      border: 2px solid transparent; background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover { background-color: #454d63; }
+    ::-webkit-scrollbar-corner { background: transparent; }
+    header {
+      padding: 10px 8px 10px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      background: var(--panel);
+      -webkit-app-region: drag;
+    }
+    header .no-drag { -webkit-app-region: no-drag; }
+    .win-ops { display: flex; margin-left: 6px; }
+    .win-ops button {
+      width: 36px; height: 30px; padding: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: none; background: transparent; color: var(--muted);
+      border-radius: 6px; font-size: 13px;
+    }
+    .win-ops button:hover { background: rgba(255, 255, 255, 0.10); color: var(--text); }
+    .win-ops button.close:hover { background: #e81123; color: #fff; }
+    .agent-chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      background: var(--accent-bg);
+      border: 1px solid rgba(96, 165, 250, 0.4);
+      border-radius: 8px; padding: 5px 10px; font-weight: 600;
+    }
+    .meta { color: var(--muted); font-size: 12px; }
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; }
+    .status.running .dot { background: #34d399; animation: pulse 1s infinite alternate; }
+    .status.error .dot { background: #f87171; }
+    @keyframes pulse { from { opacity: .4 } to { opacity: 1 } }
+    .spacer { flex: 1; }
+    select, button, textarea, input {
+      font: inherit; color: var(--text);
+      background: #262a36; border: 1px solid var(--border);
+      border-radius: 7px; padding: 6px 10px; outline: none;
+    }
+    select:focus, textarea:focus { border-color: var(--accent); }
+    button { cursor: pointer; transition: all .12s; }
+    button:hover { border-color: var(--accent); background: var(--accent-bg); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+
+    #previewWrap {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: #171a22;
+      cursor: pointer;
+    }
+    #preview {
+      display: block;
+      max-width: 100%;
+      max-height: 160px;
+      margin: 0 auto;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      object-fit: contain;
+    }
+    #previewWrap .pv-tip { text-align: center; color: var(--muted); font-size: 11px; margin-top: 6px; }
+    body.preview-full #preview { max-height: none; width: 100%; }
+    body.preview-full { overflow: auto; }
+
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 18px;
+    }
+    #reasoning {
+      margin-bottom: 12px;
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 12.5px;
+      display: none;
+    }
+    #reasoning summary { cursor: pointer; user-select: none; color: #a5b4d4; }
+    #reasoning pre { white-space: pre-wrap; margin-top: 8px; font-family: inherit; }
+    #streamTip { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .spinner {
+      width: 14px; height: 14px; border-radius: 50%;
+      border: 2px solid rgba(96, 165, 250, .25); border-top-color: var(--accent);
+      animation: spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg) } }
+    #answer { display: none; }
+    #answer.md { display: block; }
+    .error-box {
+      display: none;
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.4);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+    .error-box button { margin-top: 8px; }
+
+    /* Markdown 样式 */
+    .md h1, .md h2, .md h3, .md h4 { margin: 14px 0 8px; line-height: 1.4; }
+    .md h1 { font-size: 19px; } .md h2 { font-size: 17px; } .md h3 { font-size: 15.5px; }
+    .md p { margin: 8px 0; }
+    .md ul, .md ol { margin: 8px 0 8px 22px; }
+    .md li { margin: 3px 0; }
+    .md code {
+      background: #262a36; border-radius: 4px; padding: 1.5px 6px;
+      font: 12.5px/1.5 Consolas, "Courier New", monospace; color: #93c5fd;
+    }
+    .md pre {
+      background: #101218; border: 1px solid var(--border); border-radius: 8px;
+      padding: 12px 14px; overflow-x: auto; margin: 10px 0;
+    }
+    .md pre code { background: none; padding: 0; color: #d7e2f5; font-size: 12.5px; line-height: 1.6; }
+    .md table { border-collapse: collapse; margin: 10px 0; display: block; overflow-x: auto; max-width: 100%; }
+    .md th, .md td { border: 1px solid var(--border); padding: 6px 12px; }
+    .md th { background: #232734; }
+    .md blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--muted); margin: 10px 0; }
+    .md a { color: var(--accent); }
+    .md img { max-width: 100%; border-radius: 6px; }
+    .md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+    .md .katex { font-size: 1.02em; }
+    .md .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 10px 14px;
+      background: var(--panel);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    #followup { display: flex; gap: 8px; }
+    #followup textarea {
+      flex: 1; resize: none; min-height: 42px; max-height: 120px;
+      font-family: inherit;
+    }
+    #actionsRow { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .copied-flash { border-color: #22c55e !important; color: #bbf7d0 !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <span class="agent-chip" id="agentChip"></span>
+    <span class="meta" id="modelMeta"></span>
+    <span class="spacer"></span>
+    <span class="status no-drag" id="status"><span class="dot"></span><span id="statusText" data-i18n="res.waiting"></span></span>
+    <div class="win-ops no-drag">
+      <button id="winMin" data-i18n-title="res.winMin">—</button>
+      <button id="winClose" class="close" data-i18n-title="res.winClose">✕</button>
+    </div>
+  </header>
+
+  <div id="previewWrap" data-i18n-title="res.previewTip">
+    <img id="preview" alt="" />
+    <div class="pv-tip" data-i18n="res.previewTip"></div>
+  </div>
+
+  <div id="content">
+    <details id="reasoning">
+      <summary data-i18n="res.thinking"></summary>
+      <pre id="reasoningText"></pre>
+    </details>
+    <div class="error-box" id="errorBox"></div>
+    <div id="streamTip"><span class="spinner"></span><span data-i18n="res.streamingTip"></span></div>
+    <div id="answer" class="md"></div>
+  </div>
+
+  <footer>
+    <div id="followup">
+      <textarea id="followupInput" data-i18n-ph="res.placeholder"></textarea>
+      <button id="btnSend" data-i18n-title="res.send" data-i18n="res.send"></button>
+    </div>
+    <div id="actionsRow">
+      <select id="agentSelect" data-i18n-title="res.switchAgent"></select>
+      <button id="btnReanalyze" data-i18n="res.reanalyze"></button>
+      <button id="btnStop" style="display:none" data-i18n="res.stop"></button>
+      <button id="btnCopyResult" data-i18n="res.copyResult"></button>
+      <button id="btnSaveImage" data-i18n="res.saveImage"></button>
+      <button id="btnCopyImage" data-i18n="res.copyImage"></button>
+    </div>
+  </footer>
+
+  <script src="../../../node_modules/marked/marked.min.js"></script>
+  <script src="../../../node_modules/dompurify/dist/purify.min.js"></script>
+  <script src="../../../node_modules/katex/dist/katex.min.js"></script>
+  <script src="../../../node_modules/katex/dist/contrib/auto-render.min.js"></script>
+  <script src="../../shared/i18n-dom.js"></script>
+  <script>applyI18n();</script>
+  <script src="result.js"></script>
+</body>
+</html>

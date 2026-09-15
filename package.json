@@ -1,0 +1,24 @@
+{
+  "name": "smart-capture",
+  "productName": "智能截图",
+  "version": "1.0.0",
+  "description": "智能截图 - 截图并用 AI 智能体分析图片内容",
+  "main": "src/main/index.js",
+  "author": "Smart Capture",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dist-win": "electron-builder --win nsis",
+    "dist-mac": "electron-builder --mac dmg"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.3",
+    "katex": "^0.16.11",
+    "marked": "^15.0.0"
+  }
+}
