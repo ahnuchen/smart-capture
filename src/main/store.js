@@ -12,8 +12,9 @@ const DEFAULT_SETTINGS = {
   providers: { [BUILTIN_PROVIDER_ID]: BUILTIN_PROVIDER },
   activeProviderId: BUILTIN_PROVIDER_ID,
   activeModelId: 'zhipu/glm-4v-flash',
-  agents: BUILTIN_AGENTS.map((a) => ({ ...a, enabled: true })),
-  defaultAgentId: 'general',
+  // 默认仅开启翻译与文字提取，其它内置智能体由用户在设置中启用
+  agents: BUILTIN_AGENTS.map((a) => ({ ...a, enabled: a.id === 'translate' || a.id === 'ocr' })),
+  defaultAgentId: 'translate',
   autoAnalyze: false,
   shortcut: 'CommandOrControl+Shift+A',
   openAtLogin: false,
@@ -29,6 +30,10 @@ function deepMerge(base, override) {
   }
   return out;
 }
+
+// 这些键是"整份替换"语义：渲染层提交的对象就是完整状态，
+// 深合并会让用户删除的条目（如自定义服务商）从旧数据里复活。
+const REPLACE_KEYS = ['providers'];
 
 class Store {
   constructor() {
@@ -65,13 +70,17 @@ class Store {
 
   patch(partial) {
     this.data = deepMerge(this.data, partial);
+    // 整份替换键：deepMerge 会保留 base 里的旧键，删除的条目需以提交值覆盖回来
+    for (const k of REPLACE_KEYS) {
+      if (partial && partial[k] !== undefined) this.data[k] = partial[k];
+    }
     this.save();
     return this.data;
   }
 
   resetAgents() {
-    this.data.agents = DEFAULT_SETTINGS.agents.map((a) => ({ ...a, enabled: true }));
-    if (!this.getAgent(this.data.defaultAgentId)) this.data.defaultAgentId = 'general';
+    this.data.agents = DEFAULT_SETTINGS.agents.map((a) => ({ ...a }));
+    if (!this.getAgent(this.data.defaultAgentId)) this.data.defaultAgentId = 'translate';
     this.save();
     return this.data;
   }

@@ -15,7 +15,10 @@ const INVOKABLE = new Set([
   'settings:get',
   'settings:save',
   'settings:reset-agents',
+  'settings:reset-builtin-models',
+  'settings:test-model',
   'app:open-settings',
+  'app:open-external',
   'app:quit',
   'win:control',
 ]);

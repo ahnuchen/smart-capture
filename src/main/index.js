@@ -1,9 +1,11 @@
 // 应用入口：生命周期、托盘、全局快捷键、IPC 装配
-const { app, Tray, Menu, globalShortcut, BrowserWindow, ipcMain, dialog, nativeImage, systemPreferences, nativeTheme } = require('electron');
+const { app, Tray, Menu, globalShortcut, BrowserWindow, ipcMain, dialog, nativeImage, systemPreferences, nativeTheme, shell } = require('electron');
 const path = require('path');
 const { Store } = require('./store');
 const { ScreenshotManager } = require('./screenshot');
 const { AnalysisManager } = require('./analysis');
+const { chatStream } = require('./ai');
+const { BUILTIN_PROVIDER, BUILTIN_PROVIDER_ID } = require('../shared/providers');
 const { setLang, t } = require('../shared/i18n');
 
 const IS_DEV = !!process.argv.find((a) => a === '--dev');
@@ -47,6 +49,21 @@ function openSettings() {
   });
   settingsWin.setMenu(null);
   settingsWin.loadFile(path.join(__dirname, '../renderer/settings/index.html'));
+  const openExternalSafe = (url) => {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'https:' || u.protocol === 'http:') shell.openExternal(url);
+    } catch (_) { /* 忽略 */ }
+  };
+  settingsWin.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalSafe(url);
+    return { action: 'deny' };
+  });
+  settingsWin.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('file://')) return;
+    e.preventDefault();
+    openExternalSafe(url);
+  });
   settingsWin.once('ready-to-show', () => settingsWin.show());
   settingsWin.on('closed', () => (settingsWin = null));
   if (IS_DEV) settingsWin.webContents.openDevTools({ mode: 'detach' });
@@ -63,6 +80,20 @@ function registerShortcut() {
   }
 }
 
+// ---------- 快捷键展示 ----------
+// 存储值保持 Electron accelerator 格式（CommandOrControl+...），展示时翻译成当前平台的按键名
+const KEY_NAMES = {
+  win: { CommandOrControl: 'Ctrl', Command: 'Win', Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Space: 'Space' },
+  mac: { CommandOrControl: '\u2318', Command: '\u2318', Control: '\u2303', Alt: '\u2325', Shift: '\u21e7', Space: '\u2423' },
+};
+function formatAccelerator(accel) {
+  const names = KEY_NAMES[process.platform === 'darwin' ? 'mac' : 'win'];
+  return String(accel || '')
+    .split('+')
+    .map((part) => names[part] || (part.length === 1 ? part.toUpperCase() : part))
+    .join(process.platform === 'darwin' ? '' : '+');
+}
+
 // ---------- 托盘 ----------
 function createTray() {
   let image = nativeImage.createFromPath(ICON);
@@ -77,7 +108,7 @@ function rebuildTrayMenu() {
   const s = store.data;
   const menu = Menu.buildFromTemplate([
     { label: t('tray.capture'), click: () => screenshot.start() },
-    { label: t('tray.shortcut', s.shortcut), enabled: false },
+    { label: t('tray.shortcut', formatAccelerator(s.shortcut)), enabled: false },
     { type: 'separator' },
     {
       label: t('tray.autoAnalyze'),
@@ -94,7 +125,7 @@ function rebuildTrayMenu() {
     { label: t('tray.quit'), click: () => app.quit() },
   ]);
   tray.setContextMenu(menu);
-  tray.setToolTip(t('tray.tooltip', s.shortcut));
+  tray.setToolTip(t('tray.tooltip', formatAccelerator(s.shortcut)));
 }
 
 function broadcastSettings() {
@@ -144,6 +175,50 @@ function setupIpc() {
     broadcastSettings();
     return { ok: true, settings: JSON.parse(JSON.stringify(store.data)) };
   });
+  ipcMain.handle('settings:reset-builtin-models', () => {
+    const p = store.data.providers[BUILTIN_PROVIDER_ID];
+    if (p) p.models = BUILTIN_PROVIDER.models.map((m) => ({ ...m }));
+    store.save();
+    broadcastSettings();
+    return { ok: true, settings: JSON.parse(JSON.stringify(store.data)) };
+  });
+  ipcMain.handle('settings:test-model', async (_e, { provider: cfg, modelId }) => {
+    if (!cfg || !modelId) return { ok: false, error: t('pv.testNoConfig') };
+    let base;
+    try {
+      base = new URL(String(cfg.baseURL || ''));
+    } catch (_) {
+      return { ok: false, error: t('pv.testBadBase') };
+    }
+    if (base.protocol !== 'https:' && base.protocol !== 'http:') return { ok: false, error: t('pv.testBadBase') };
+    const started = Date.now();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    try {
+      const { content } = await chatStream({
+        provider: { baseURL: cfg.baseURL, apiKey: cfg.apiKey },
+        model: modelId,
+        messages: [{ role: 'user', content: 'ping' }],
+        onDelta: () => {},
+        signal: ctrl.signal,
+      });
+      return { ok: true, latencyMs: Date.now() - started, reply: String(content || '').slice(0, 60) };
+    } catch (err) {
+      return { ok: false, error: err.name === 'AbortError' ? t('pv.testTimeout') : err.message };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
+  // 打开外部链接（仅允许 http/https）
+  ipcMain.handle('app:open-external', (_e, { url }) => {
+    try {
+      const u = new URL(url);
+      if (u.protocol === 'https:' || u.protocol === 'http:') shell.openExternal(url);
+    } catch (_) {
+      /* 非法 URL 忽略 */
+    }
+  });
 
   // 应用级
   ipcMain.handle('app:open-settings', () => openSettings());
@@ -177,7 +252,7 @@ function normalizeSettings(s) {
   if (!s.providers || typeof s.providers !== 'object' || !Object.keys(s.providers).length) delete s.providers;
   if (!Array.isArray(s.agents) || !s.agents.length) delete s.agents;
   if (s.defaultAgentId && !(s.agents || store.data.agents).some((a) => a.id === s.defaultAgentId)) {
-    s.defaultAgentId = 'general';
+    s.defaultAgentId = 'translate';
   }
   return s;
 }
@@ -300,8 +375,8 @@ if (!gotLock) {
         console.error('[selftest] toolbar DOM assert failed:', e.message);
       }
     }
-    console.log('[selftest] toolbar action: agent=general');
-    await screenshot.handleToolbarAction({ type: 'agent', agentId: 'general' });
+    console.log('[selftest] toolbar action: agent=translate');
+    await screenshot.handleToolbarAction({ type: 'agent', agentId: 'translate' });
     await sleep(9000);
     await snap(analysis.resultWin, 'result-streaming.png');
     await sleep(26000);

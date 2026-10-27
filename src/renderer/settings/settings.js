@@ -47,22 +47,62 @@ function renderAll() {
   markClean();
 }
 
+// ---------- 页内弹窗（替代原生 alert/confirm） ----------
+function showDialog({ message, danger }) {
+  return new Promise((resolve) => {
+    const box = $('dialogBox');
+    $('dlgMsg').textContent = message;
+    $('dlgOk').textContent = window.i18n.t(danger ? 'ag.del' : 'dlg.ok');
+    $('dlgCancel').style.display = danger ? 'inline-block' : 'none';
+    if (danger) $('dlgCancel').textContent = window.i18n.t('pv.cancel');
+    box.hidden = false;
+    const done = (val) => {
+      box.hidden = true;
+      $('dlgOk').onclick = $('dlgOk').onkeydown = null;
+      $('dlgCancel').onclick = null;
+      box.onkeydown = null;
+      box.onmousedown = null;
+      resolve(val);
+    };
+    $('dlgOk').onclick = () => done(true);
+    $('dlgCancel').onclick = () => done(false);
+    // Enter/ESC/点击遮罩：alert 一律视为确认，confirm 的 ESC 视为取消
+    box.onkeydown = (e) => {
+      if (e.key === 'Enter') done(true);
+      else if (e.key === 'Escape') done(!!danger ? false : true);
+    };
+    $('dlgOk').onkeydown = (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); done(true); }
+    };
+    box.onmousedown = (e) => { if (e.target === box) done(danger ? false : true); };
+    $('dlgOk').focus();
+  });
+}
+const dlgAlert = (msg) => showDialog({ message: msg });
+const dlgConfirm = (msg) => showDialog({ message: msg, danger: true });
+
 // ---------- 模型服务 ----------
 function renderProviders() {
   const list = $('providerList');
   list.innerHTML = '';
   for (const p of Object.values(settings.providers)) {
-    const item = document.createElement('label');
+    const item = document.createElement('div');
     item.className = 'model-item' + (settings.activeProviderId === p.id ? ' active' : '');
     item.innerHTML = `
       <input type="radio" name="provider" ${settings.activeProviderId === p.id ? 'checked' : ''} />
       <span class="grow">
-        <div>${p.name} ${p.builtIn ? '<span class="badge builtin">内置免费</span>' : ''}</div>
+        <div>${p.name} ${p.builtIn ? '<span class="badge builtin">' + window.i18n.t('pv.builtin') + '</span>' : ''}</div>
         <div class="mid">${p.baseURL}</div>
       </span>
-      <span class="tag">${(p.models || []).length} 个模型</span>
+      <span class="tag">${window.i18n.t('pv.modelCount', (p.models || []).length)}</span>
+      ${p.builtIn ? '' : `
+        <button class="small op-edit-provider">${window.i18n.t('pv.editModel')}</button>
+        <button class="small danger op-del-provider">${window.i18n.t('pv.delModel')}</button>
+      `}
     `;
-    item.querySelector('input').addEventListener('change', () => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return; // 行内按钮不触发切换
+      if (settings.activeProviderId === p.id) return;
       settings.activeProviderId = p.id;
       const firstVision = (p.models || []).find((m) => m.vision) || (p.models || [])[0];
       if (firstVision && !isModelInProvider(settings.activeModelId)) settings.activeModelId = firstVision.id;
@@ -70,6 +110,10 @@ function renderProviders() {
       renderModels();
       markDirty();
     });
+    if (!p.builtIn) {
+      item.querySelector('.op-edit-provider').addEventListener('click', () => openProviderEditor(p));
+      item.querySelector('.op-del-provider').addEventListener('click', () => deleteProvider(p.id));
+    }
     list.appendChild(item);
   }
 
@@ -88,24 +132,98 @@ function renderModels() {
   const p = settings.providers[settings.activeProviderId];
   const list = $('modelList');
   $('activeProviderBadge').textContent = p ? p.name : '';
+  $('btnResetModels').style.display = p && p.builtIn ? 'inline-block' : 'none';
   list.innerHTML = '';
   if (!p) return;
   for (const m of p.models || []) {
-    const item = document.createElement('label');
+    const item = document.createElement('div');
     item.className = 'model-item' + (settings.activeModelId === m.id ? ' active' : '');
     item.innerHTML = `
       <input type="radio" name="model" ${settings.activeModelId === m.id ? 'checked' : ''} />
       <span class="grow"><div>${m.name || m.id}</div><div class="mid">${m.id}</div></span>
-      ${m.vision ? '<span class="tag vision">视觉</span>' : '<span class="tag">文本</span>'}
+      <span class="test-result"></span>
+      ${m.vision ? '<span class="tag vision">' + window.i18n.t('pv.vision') + '</span>' : '<span class="tag">' + window.i18n.t('pv.text') + '</span>'}
+      <button class="small op-test">${window.i18n.t('pv.test')}</button>
+      <button class="small op-edit-model">${window.i18n.t('pv.editModel')}</button>
+      ${(p.models || []).length > 1 ? '<button class="small danger op-del-model">' + window.i18n.t('pv.delModel') + '</button>' : ''}
     `;
-    item.querySelector('input').addEventListener('change', () => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return; // 行内按钮不触发切换
+      if (settings.activeModelId === m.id) return;
       settings.activeModelId = m.id;
       renderModels();
       markDirty();
     });
+    const resultEl = item.querySelector('.test-result');
+    item.querySelector('.op-test').addEventListener('click', async (e) => {
+      e.target.disabled = true;
+      resultEl.textContent = window.i18n.t('pv.testing');
+      resultEl.className = 'test-result';
+      const res = await bridge.invoke('settings:test-model', { provider: { baseURL: p.baseURL, apiKey: p.apiKey }, modelId: m.id });
+      e.target.disabled = false;
+      if (res && res.ok) {
+        resultEl.textContent = window.i18n.t('pv.testOk', (res.latencyMs / 1000).toFixed(1));
+        resultEl.className = 'test-result ok';
+      } else {
+        resultEl.textContent = window.i18n.t('pv.testFail', (res && res.error) || 'error');
+        resultEl.className = 'test-result fail';
+      }
+    });
+    item.querySelector('.op-edit-model').addEventListener('click', () => openModelEditor(p, m));
+    const delBtn = item.querySelector('.op-del-model');
+    if (delBtn)
+      delBtn.addEventListener('click', async () => {
+        if (!(await dlgConfirm(window.i18n.t('pv.delModelConfirm', m.name || m.id)))) return;
+        p.models = p.models.filter((x) => x.id !== m.id);
+        if (settings.activeModelId === m.id) {
+          const next = p.models.find((x) => x.vision) || p.models[0];
+          settings.activeModelId = next ? next.id : '';
+        }
+        renderModels();
+        renderProviders();
+        markDirty();
+      });
     list.appendChild(item);
   }
 }
+
+let editingModel = null; // { provider, originalId }
+
+function openModelEditor(p, m) {
+  editingModel = { provider: p, originalId: m.id };
+  $('meId').value = m.id;
+  $('meName').value = m.name || '';
+  $('meVision').checked = !!m.vision;
+  $('modelEditor').style.display = 'block';
+  $('meId').focus();
+}
+
+$('meCancel').addEventListener('click', () => ($('modelEditor').style.display = 'none'));
+
+$('meSave').addEventListener('click', async () => {
+  const id = $('meId').value.trim();
+  if (!id) return dlgAlert(window.i18n.t('pv.alertModelId'));
+  const { provider, originalId } = editingModel;
+  const keep = provider.models.find((x) => x.id === originalId);
+  Object.assign(keep, {
+    id,
+    name: $('meName').value.trim() || id,
+    vision: $('meVision').checked,
+  });
+  if (settings.activeModelId === originalId) settings.activeModelId = id;
+  $('modelEditor').style.display = 'none';
+  renderModels();
+  markDirty();
+});
+
+$('btnResetModels').addEventListener('click', async () => {
+  if (!(await dlgConfirm(window.i18n.t('pv.resetModelsConfirm')))) return;
+  const res = await bridge.invoke('settings:reset-builtin-models');
+  if (res && res.settings) {
+    settings = res.settings;
+    renderAll();
+  }
+});
 
 $('btnAddProvider').addEventListener('click', () => {
   editingProviderId = 'custom_' + Date.now();
@@ -119,13 +237,29 @@ $('btnAddProvider').addEventListener('click', () => {
   $('peName').focus();
 });
 
+function openProviderEditor(p) {
+  editingProviderId = p.id;
+  $('peTitle').textContent = window.i18n.t('pv.editTitle');
+  $('peName').value = p.name || '';
+  $('peBase').value = p.baseURL || '';
+  $('peKey').value = p.apiKey || '';
+  $('peModels').value = (p.models || [])
+    .map((m) => `${m.id} | ${m.name || m.id}${m.vision ? ' | v' : ''}`)
+    .join('\n');
+  $('peDelete').style.display = 'inline-block';
+  $('providerEditor').style.display = 'block';
+  $('providerEditor').scrollIntoView({ behavior: 'smooth' });
+}
+
 $('peCancel').addEventListener('click', () => ($('providerEditor').style.display = 'none'));
 
-$('peSave').addEventListener('click', () => {
+$('peSave').addEventListener('click', async () => {
   const name = $('peName').value.trim();
   const base = $('peBase').value.trim().replace(/\/+$/, '');
   const key = $('peKey').value.trim();
-  const models = $('peModels').value
+  // 模型留空时直接采用输入框 placeholder 里的默认示例
+  const modelsText = $('peModels').value.trim() || $('peModels').placeholder;
+  const models = modelsText
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
@@ -134,12 +268,23 @@ $('peSave').addEventListener('click', () => {
       return { id, name: label || id, vision: (flag || '').toLowerCase() === 'v' };
     })
     .filter((m) => m.id);
-  if (!name || !base) return alert(window.i18n.t('pv.alertNameBase'));
-  if (!models.length) return alert(window.i18n.t('pv.alertModels'));
-  settings.providers[editingProviderId] = { id: editingProviderId, name, baseURL: base, apiKey: key, models };
-  if (!isModelInProvider(settings.activeModelId)) {
-    settings.activeModelId = (models.find((m) => m.vision) || models[0]).id;
-    settings.activeProviderId = editingProviderId;
+  if (!name || !base) return dlgAlert(window.i18n.t('pv.alertNameBase'));
+  if (!/^https?:\/\//i.test(base)) return dlgAlert(window.i18n.t('pv.alertBadBase'));
+  if (!models.length) return dlgAlert(window.i18n.t('pv.alertModels'));
+  const existing = settings.providers[editingProviderId];
+  if (existing) {
+    // 编辑：保留原 id 键，避免旧条目变孤儿；模型列表整体替换
+    Object.assign(existing, { name, baseURL: base, apiKey: key, models });
+    if (settings.activeProviderId === existing.id && !isModelInProvider(settings.activeModelId)) {
+      const next = models.find((m) => m.vision) || models[0];
+      settings.activeModelId = next.id;
+    }
+  } else {
+    settings.providers[editingProviderId] = { id: editingProviderId, name, baseURL: base, apiKey: key, models };
+    if (!isModelInProvider(settings.activeModelId)) {
+      settings.activeModelId = (models.find((m) => m.vision) || models[0]).id;
+      settings.activeProviderId = editingProviderId;
+    }
   }
   $('providerEditor').style.display = 'none';
   renderProviders();
@@ -147,18 +292,25 @@ $('peSave').addEventListener('click', () => {
   markDirty();
 });
 
-$('peDelete').addEventListener('click', () => {
-  if (!confirm(window.i18n.t('pv.delConfirm'))) return;
-  delete settings.providers[editingProviderId];
-  if (settings.activeProviderId === editingProviderId) {
-    settings.activeProviderId = Object.keys(settings.providers)[0];
-    settings.activeModelId = (settings.providers[settings.activeProviderId].models || [])[0].id;
+$('peDelete').addEventListener('click', () => deleteProvider(editingProviderId));
+
+async function deleteProvider(id) {
+  if (!(await dlgConfirm(window.i18n.t('pv.delConfirm')))) return;
+  delete settings.providers[id];
+  if (settings.activeProviderId === id) {
+    const builtin = Object.values(settings.providers).find((p) => p.builtIn);
+    const fallback = builtin || Object.values(settings.providers)[0];
+    if (fallback) {
+      settings.activeProviderId = fallback.id;
+      const next = (fallback.models || []).find((m) => m.vision) || (fallback.models || [])[0];
+      settings.activeModelId = next ? next.id : '';
+    }
+    renderModels();
   }
   $('providerEditor').style.display = 'none';
   renderProviders();
-  renderModels();
   markDirty();
-});
+}
 
 $('builtinKeySave').addEventListener('click', () => {
   const builtin = Object.values(settings.providers).find((p) => p.builtIn);
@@ -201,10 +353,10 @@ function renderAgents() {
     });
     item.querySelector('.op-edit').addEventListener('click', () => openAgentEditor(a));
     const del = item.querySelector('.op-del');
-    if (del) del.addEventListener('click', () => {
-      if (!confirm(window.i18n.t('ag.delConfirm', agentDisplayName(a)))) return;
+    if (del) del.addEventListener('click', async () => {
+      if (!(await dlgConfirm(window.i18n.t('ag.delConfirm', agentDisplayName(a))))) return;
       settings.agents = settings.agents.filter((x) => x.id !== a.id);
-      if (settings.defaultAgentId === a.id) settings.defaultAgentId = 'general';
+      if (settings.defaultAgentId === a.id) settings.defaultAgentId = 'translate';
       renderAgents();
       renderCapture();
       markDirty();
@@ -241,13 +393,13 @@ function openAgentEditor(a) {
 $('btnAddAgent').addEventListener('click', () => openAgentEditor(null));
 $('aeCancel').addEventListener('click', () => ($('agentEditor').style.display = 'none'));
 
-$('aeSave').addEventListener('click', () => {
+$('aeSave').addEventListener('click', async () => {
   const icon = $('aeIcon').value.trim() || '🤖';
   const name = $('aeName').value.trim();
   const prompt = $('aePrompt').value.trim();
+  if (!name) return dlgAlert(window.i18n.t('ag.alertName'));
+  if (!prompt) return dlgAlert(window.i18n.t('ag.alertPrompt'));
   const model = $('aeModel').value || undefined;
-  if (!name) return alert(window.i18n.t('ag.alertName'));
-  if (!prompt) return alert(window.i18n.t('ag.alertPrompt'));
   const existing = settings.agents.find((x) => x.id === editingAgentId);
   if (existing) {
     Object.assign(existing, { icon, name, systemPrompt: prompt, model });
@@ -261,10 +413,11 @@ $('aeSave').addEventListener('click', () => {
   markDirty();
 });
 
-$('aeDelete').addEventListener('click', () => {
-  if (!confirm('确定删除该智能体？')) return;
+$('aeDelete').addEventListener('click', async () => {
+  const target = settings.agents.find((x) => x.id === editingAgentId);
+  if (!(await dlgConfirm(window.i18n.t('ag.delConfirm', target ? agentDisplayName(target) : editingAgentId)))) return;
   settings.agents = settings.agents.filter((x) => x.id !== editingAgentId);
-  if (settings.defaultAgentId === editingAgentId) settings.defaultAgentId = 'general';
+  if (settings.defaultAgentId === editingAgentId) settings.defaultAgentId = 'translate';
   $('agentEditor').style.display = 'none';
   renderAgents();
   renderCapture();
@@ -272,7 +425,7 @@ $('aeDelete').addEventListener('click', () => {
 });
 
 $('btnResetAgents').addEventListener('click', async () => {
-  if (!confirm(window.i18n.t('ag.resetConfirm'))) return;
+  if (!(await dlgConfirm(window.i18n.t('ag.resetConfirm')))) return;
   const res = await bridge.invoke('settings:reset-agents');
   settings = res.settings;
   renderAll();
@@ -290,7 +443,7 @@ function renderCapture() {
     sel.appendChild(opt);
   }
   $('autoAnalyze').checked = !!settings.autoAnalyze;
-  $('shortcutDisplay').textContent = pendingShortcut || settings.shortcut;
+  $('shortcutDisplay').textContent = formatShortcut(pendingShortcut || settings.shortcut);
 }
 
 $('defaultAgent').addEventListener('change', (e) => {
@@ -305,7 +458,7 @@ $('autoAnalyze').addEventListener('change', (e) => {
 
 $('btnRecord').addEventListener('click', () => {
   recording = true;
-  $('btnRecord').textContent = '请按下组合键…（ESC 取消）';
+  $('btnRecord').textContent = window.i18n.t('cap.recording');
 });
 document.addEventListener('keydown', (e) => {
   if (!recording) return;
@@ -313,7 +466,7 @@ document.addEventListener('keydown', (e) => {
   e.stopPropagation();
   if (e.key === 'Escape') {
     recording = false;
-    $('btnRecord').textContent = '点击后按下组合键';
+    $('btnRecord').textContent = window.i18n.t('cap.record');
     return;
   }
   const combo = buildAccelerator(e);
@@ -321,10 +474,22 @@ document.addEventListener('keydown', (e) => {
   recording = false;
   pendingShortcut = combo;
   settings.shortcut = combo;
-  $('btnRecord').textContent = '点击后按下组合键';
-  $('shortcutDisplay').textContent = combo;
+  $('btnRecord').textContent = window.i18n.t('cap.record');
+  $('shortcutDisplay').textContent = formatShortcut(combo);
   markDirty();
 });
+
+// 存储用 Electron accelerator（CommandOrControl），展示用当前平台的按键名
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+const SHORTCUT_KEY_NAMES = IS_MAC
+  ? { CommandOrControl: '\u2318', Command: '\u2318', Control: '\u2303', Alt: '\u2325', Shift: '\u21e7', Space: '\u2423' }
+  : { CommandOrControl: 'Ctrl', Command: 'Win', Control: 'Ctrl', Alt: 'Alt', Shift: 'Shift', Space: 'Space' };
+function formatShortcut(accel) {
+  return String(accel || '')
+    .split('+')
+    .map((part) => SHORTCUT_KEY_NAMES[part] || (part.length === 1 ? part.toUpperCase() : part))
+    .join(IS_MAC ? '' : '+');
+}
 
 function buildAccelerator(e) {
   const parts = [];
@@ -393,6 +558,7 @@ $('winMax').addEventListener('click', () => bridge.invoke('win:control', { actio
 $('winClose').addEventListener('click', () => bridge.invoke('win:control', { action: 'close' }));
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape' || recording) return;
+  if (!$('dialogBox').hidden) return; // 页内弹窗打开时由弹窗自行处理 ESC
   const t = document.activeElement;
   const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
   if (!typing) bridge.invoke('win:control', { action: 'close' });

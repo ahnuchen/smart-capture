@@ -128,6 +128,9 @@
       margin-bottom: 8px; background: var(--panel2);
     }
     .model-item input, .agent-item input[type=checkbox], .agent-item input[type=radio] { accent-color: var(--accent); }
+    .model-item { cursor: pointer; }
+    .model-item button { cursor: pointer; }
+    .model-item input[type=radio] { pointer-events: none; }
     .model-item .grow, .agent-item .grow { flex: 1; min-width: 0; }
     .model-item .mid { color: var(--muted); font-size: 12px; }
     .model-item.active { border-color: var(--accent); background: var(--accent-bg); }
@@ -156,8 +159,28 @@
       background: var(--panel2); border: 1px solid var(--border); border-bottom-width: 2px;
       border-radius: 6px; padding: 2px 8px; font: 12px Consolas, monospace;
     }
-    .grid-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+    .grid-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
     .note { font-size: 12.5px; color: var(--muted); }
+    .link { color: var(--accent); font-size: 13px; cursor: pointer; text-decoration: none; }
+    .link:hover { text-decoration: underline; }
+    .test-result { font-size: 12px; }
+    .test-result.ok { color: var(--ok); }
+    .test-result.fail { color: var(--danger); }
+    /* 页内弹窗：替代原生 alert/confirm（原生模态在无边框窗口关闭后会丢焦点，导致页面无法继续输入） */
+    #dialogBox {
+      position: fixed; inset: 0; z-index: 100; display: flex;
+      align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.45);
+    }
+    #dialogBox[hidden] { display: none; }
+    .dlg {
+      width: 380px; max-width: calc(100vw - 48px);
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px 20px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+    }
+    .dlg-msg { font-size: 13.5px; line-height: 1.6; margin-bottom: 16px; white-space: pre-line; }
+    .dlg-ops { display: flex; justify-content: flex-end; gap: 8px; }
   </style>
 </head>
 <body>
@@ -208,12 +231,30 @@
         <div class="card">
           <h3><span data-i18n="pv.selectModel"></span> <span class="badge" id="activeProviderBadge"></span></h3>
           <div id="modelList"></div>
+          <div class="grid-actions">
+            <button id="btnResetModels" class="small" style="display:none" data-i18n="pv.resetModels"></button>
+          </div>
           <div class="note" style="margin-top:6px" data-i18n="pv.modelNote"></div>
+        </div>
+        <div class="card" id="modelEditor" style="display:none">
+          <h3 data-i18n="pv.meTitle"></h3>
+          <div class="field"><label data-i18n="pv.meId"></label><input type="text" id="meId" data-i18n-ph="pv.meIdPh" /></div>
+          <div class="field"><label data-i18n="pv.meName"></label><input type="text" id="meName" data-i18n-ph="pv.meNamePh" /></div>
+          <div class="field">
+            <label class="switch"><input type="checkbox" id="meVision" /> <span data-i18n="pv.meVision"></span></label>
+          </div>
+          <div class="grid-actions">
+            <button id="meSave" class="primary small" data-i18n="pv.save"></button>
+            <button id="meCancel" class="small" data-i18n="pv.cancel"></button>
+          </div>
         </div>
         <div class="card" id="builtinKeyCard" style="display:none">
           <h3 data-i18n="pv.builtinKeyTitle"></h3>
           <div class="field"><label data-i18n="pv.builtinKeyLabel"></label><input type="password" id="builtinKey" /></div>
-          <div class="grid-actions"><button id="builtinKeySave" class="primary small" data-i18n="pv.builtinKeySave"></button></div>
+          <div class="grid-actions">
+            <button id="builtinKeySave" class="primary small" data-i18n="pv.builtinKeySave"></button>
+            <a id="fetchKeyLink" class="link" href="https://platform.aitools.cfd/key" target="_blank" rel="noopener" data-i18n="pv.fetchKey" data-i18n-title="pv.fetchKeyTitle"></a>
+          </div>
         </div>
       </section>
 
@@ -319,6 +360,16 @@
     <span class="spacer"></span>
     <span class="note" id="dirtyTip" style="display:none" data-i18n="savebar.dirty"></span>
     <button id="btnSaveAll" class="primary" data-i18n="savebar.save"></button>
+  </div>
+
+  <div id="dialogBox" hidden>
+    <div class="dlg">
+      <div class="dlg-msg" id="dlgMsg"></div>
+      <div class="dlg-ops">
+        <button id="dlgCancel" class="small"></button>
+        <button id="dlgOk" class="primary small"></button>
+      </div>
+    </div>
   </div>
 
   <script src="../../shared/i18n-dom.js"></script>
