@@ -24,7 +24,26 @@
       background-repeat: no-repeat;
       pointer-events: none;
     }
-    #sel.confirm { border: 1.5px solid #3b82f6; pointer-events: auto; }
+    #sel.confirm { border: 1.5px solid #3b82f6; pointer-events: none; }
+    /* 标注画布容器（Fabric 生成），定位到选区 */
+    #annWrap { position: absolute; display: none; z-index: 4; }
+    /* 选区调整：8 个缩放手柄 + 4 条边移动带 */
+    #adj { position: absolute; inset: 0; display: none; z-index: 7; pointer-events: none; }
+    #adj .handle {
+      position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px;
+      background: #fff; border: 1.5px solid #3b82f6; border-radius: 2px;
+      pointer-events: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+    #adj .handle[data-cur=nw], #adj .handle[data-cur=se] { cursor: nwse-resize; }
+    #adj .handle[data-cur=ne], #adj .handle[data-cur=sw] { cursor: nesw-resize; }
+    #adj .handle[data-cur=n], #adj .handle[data-cur=s] { cursor: ns-resize; }
+    #adj .handle[data-cur=e], #adj .handle[data-cur=w] { cursor: ew-resize; }
+    #adj .band { position: absolute; pointer-events: auto; }
+    #adj .band[data-cur=move] { cursor: move; }
+    #adj .band.n, #adj .band.s { height: 7px; left: 9px; right: 9px; }
+    #adj .band.w, #adj .band.e { width: 7px; top: 9px; bottom: 9px; }
+    #adj .band.n { cursor: move; } #adj .band.s { cursor: move; }
+    #adj .band.w { cursor: move; } #adj .band.e { cursor: move; }
     #size {
       position: absolute;
       display: none;
@@ -81,6 +100,8 @@
   <img id="bg" draggable="false" />
   <div id="dim"></div>
   <div id="sel"></div>
+  <div id="annWrap"><canvas id="ann"></canvas></div>
+  <div id="adj"></div>
   <div id="size"></div>
   <div id="tip"><b>Enter / 双击 / ✔完成</b> 复制并完成 · <b>ESC</b> 重新选区</div>
   <div id="crossV"></div>
@@ -91,6 +112,7 @@
     <div id="pickPos"></div>
     <div id="pickFmt">Shift 切换 HEX / RGB / HSL</div>
   </div>
+  <script src="../../../node_modules/fabric/dist/fabric.min.js"></script>
   <script src="../../shared/i18n-dom.js"></script>
   <script>applyI18n();</script>
   <script src="overlay.js"></script>

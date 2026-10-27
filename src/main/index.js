@@ -139,6 +139,7 @@ function broadcastSettings() {
 function setupIpc() {
   // 截图覆盖窗
   ipcMain.handle('shot:selection', (_e, payload) => screenshot.handleSelection(payload));
+  ipcMain.handle('shot:selection-update', (_e, payload) => screenshot.handleSelectionUpdate(payload));
   ipcMain.handle('shot:reselect', () => screenshot.handleReselect());
   ipcMain.handle('shot:canceled', () => screenshot.handleCanceled());
   ipcMain.handle('shot:copy-finish', () => screenshot.handleCopyFinish());

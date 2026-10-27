@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "dompurify": "^3.2.3",
+    "fabric": "^5.3.0",
     "katex": "^0.16.11",
     "marked": "^15.0.0"
   }

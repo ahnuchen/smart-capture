@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 const INVOKABLE = new Set([
   'shot:selection',
+  'shot:selection-update',
   'shot:reselect',
   'shot:canceled',
   'shot:copy-finish',
@@ -28,6 +29,7 @@ const LISTENABLE = new Set([
   'overlay:escape',
   'overlay:enter',
   'overlay:selftest',
+  'overlay:tool',
   'toolbar:init',
   'toolbar:feedback',
   'result:init',

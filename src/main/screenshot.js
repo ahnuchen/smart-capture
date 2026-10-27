@@ -200,6 +200,24 @@ class ScreenshotManager {
     this.selection = null;
   }
 
+  // 选区/标注变化：仅更新图片与位置，不重开工具条、不触发自动分析
+  handleSelectionUpdate({ rect, fullPng, apiImg }) {
+    if (!this.selection || !rect) return;
+    const entry = this.overlays.find((o) => o.display.id === this.selection.displayId);
+    const b = entry ? entry.display.bounds : { x: 0, y: 0 };
+    this.selection.rect = { x: b.x + rect.x, y: b.y + rect.y, w: rect.w, h: rect.h };
+    if (fullPng) this.selection.fullPng = fullPng;
+    if (apiImg) this.selection.apiImg = apiImg;
+    if (this.toolbar && !this.toolbar.isDestroyed() && this._lastToolbarSize) {
+      this.layoutToolbar(this._lastToolbarSize);
+    }
+  }
+
+  sendToActiveOverlay(payload) {
+    const o = this.activeOverlay;
+    if (o && !o.win.isDestroyed()) o.win.webContents.send('overlay:tool', payload);
+  }
+
   handleCanceled() {
     // 取消所有动作与 AI 分析
     this.analysis.cancelAll();
@@ -258,6 +276,7 @@ class ScreenshotManager {
     const win = this.toolbar;
     console.log('[screenshot] layoutToolbar:', JSON.stringify({ w, h, has: !!win }));
     if (!win || win.isDestroyed() || !this.selection) return;
+    this._lastToolbarSize = { w, h };
     const entry = this.overlays.find((o) => o.display.id === this.selection.displayId);
     const wa = entry ? entry.display.workArea : screen.getPrimaryDisplay().workArea;
     const sel = this.selection.rect;
@@ -276,8 +295,17 @@ class ScreenshotManager {
   }
 
   // ---- 工具条动作 ----
-  async handleToolbarAction({ type, agentId }) {
+  async handleToolbarAction({ type, agentId, ...rest }) {
     switch (type) {
+      // 标注指令：转发给覆盖窗，保持截图会话不结束
+      case 'tool':
+      case 'color':
+      case 'width':
+      case 'undo':
+      case 'redo':
+      case 'clear':
+        this.sendToActiveOverlay({ type, ...rest });
+        return;
       case 'agent': {
         const agent = this.store.getAgent(agentId);
         if (!agent) return;
