@@ -4,6 +4,49 @@
   <meta charset="UTF-8" />
   <title>工具条</title>
   <style>
+    /* 主题跟随 nativeTheme.themeSource（设置里的「深色/浅色」），与设置页同一机制 */
+    :root {
+      --tb-bg: rgba(21, 23, 31, 0.96);
+      --tb-border: rgba(120, 130, 160, 0.35);
+      --tb-text: #dbe2f0;
+      --tb-muted: #8b93a7;
+      --tb-hover: rgba(99, 130, 255, 0.22);
+      --tb-active: rgba(99, 130, 255, 0.40);
+      --tb-active-ring: rgba(96, 165, 250, 0.8);
+      --tb-agent-bg: rgba(70, 90, 160, 0.18);
+      --tb-agent-hover: rgba(99, 130, 255, 0.32);
+      --tb-primary: #2f6fe0;
+      --tb-primary-hover: #3b82f6;
+      --tb-primary-text: #ffffff;
+      --tb-exit-hover: rgba(248, 113, 113, 0.25);
+      --tb-exit-text: #fca5a5;
+      --tb-sep: rgba(120, 130, 160, 0.35);
+      --tb-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+      --tb-swatch-ring: rgba(255, 255, 255, 0.55);
+      --tb-dot: #dbe2f0;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --tb-bg: rgba(255, 255, 255, 0.97);
+        --tb-border: rgba(60, 70, 100, 0.2);
+        --tb-text: #1f2430;
+        --tb-muted: #6b7280;
+        --tb-hover: rgba(59, 130, 246, 0.14);
+        --tb-active: rgba(59, 130, 246, 0.24);
+        --tb-active-ring: rgba(37, 99, 235, 0.65);
+        --tb-agent-bg: rgba(59, 130, 246, 0.1);
+        --tb-agent-hover: rgba(59, 130, 246, 0.2);
+        --tb-primary: #2563eb;
+        --tb-primary-hover: #3b82f6;
+        --tb-primary-text: #ffffff;
+        --tb-exit-hover: rgba(239, 68, 68, 0.16);
+        --tb-exit-text: #dc2626;
+        --tb-sep: rgba(60, 70, 100, 0.2);
+        --tb-shadow: 0 8px 24px rgba(31, 41, 55, 0.22);
+        --tb-swatch-ring: rgba(0, 0, 0, 0.25);
+        --tb-dot: #1f2430;
+      }
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
     html, body { background: transparent; overflow: visible; }
     body { font: 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif; }
@@ -12,9 +55,9 @@
       display: inline-block;
       padding: 7px 8px;
       border-radius: 10px;
-      background: rgba(21, 23, 31, 0.96);
-      border: 1px solid rgba(120, 130, 160, 0.35);
-      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+      background: var(--tb-bg);
+      border: 1px solid var(--tb-border);
+      box-shadow: var(--tb-shadow);
     }
     .row { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
     button {
@@ -23,7 +66,7 @@
       gap: 5px;
       border: none;
       background: transparent;
-      color: #dbe2f0;
+      color: var(--tb-text);
       font: 13px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
       padding: 6px 8px;
       border-radius: 7px;
@@ -31,48 +74,35 @@
       white-space: nowrap;
       transition: background .12s;
     }
-    button:hover { background: rgba(99, 130, 255, 0.22); }
-    button:active { background: rgba(99, 130, 255, 0.35); }
+    button:hover { background: var(--tb-hover); }
+    button:active { background: var(--tb-active); }
     button .ico { font-size: 15px; line-height: 1; display: inline-flex; }
     button .ico svg { width: 15px; height: 15px; fill: currentColor; }
     button.tool { padding: 6px 7px; min-width: 29px; justify-content: center; }
-    button.tool.active { background: rgba(99, 130, 255, 0.40); box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.8); }
-    #btnColor .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.55); }
-    #btnWidth .dot { display: inline-block; background: #dbe2f0; border-radius: 50%; }
-    button.agent { background: rgba(70, 90, 160, 0.18); }
-    button.agent:hover { background: rgba(99, 130, 255, 0.32); }
-    button.agent.default { box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.65); }
-    button.primary { background: #2f6fe0; color: #fff; }
-    button.primary:hover { background: #3b82f6; }
-    button.exit:hover { background: rgba(248, 113, 113, 0.25); color: #fca5a5; }
-    .sep { width: 1px; height: 20px; background: rgba(120, 130, 160, 0.35); margin: 0 4px; flex: none; }
-    .hint { color: #8b93a7; font-size: 11px; padding: 2px 6px 0; }
-    /* 颜色/线宽弹层：绝对定位浮在条上方，不参与 #bar 尺寸，工具栏高度保持不变 */
-    #flyout {
-      position: absolute;
-      left: 8px;
-      bottom: calc(100% + 7px);
-      display: none;
-      align-items: center;
-      gap: 9px;
-      padding: 7px 9px;
-      border-radius: 9px;
-      background: rgba(21, 23, 31, 0.97);
-      border: 1px solid rgba(120, 130, 160, 0.4);
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
-      z-index: 5;
-    }
-    #flyout.show { display: flex; }
-    .swatch { width: 19px; height: 19px; border-radius: 5px; border: 2px solid transparent; cursor: pointer; flex: none; }
-    .swatch.active { border-color: #fff; }
-    .wdot { background: #dbe2f0; border-radius: 50%; cursor: pointer; flex: none; }
-    .wdot.active { box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.9); }
+    button.tool.active { background: var(--tb-active); box-shadow: inset 0 0 0 1px var(--tb-active-ring); }
+    #btnColor .sw, button .sw { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--tb-swatch-ring); }
+    button .dot { display: inline-block; background: var(--tb-dot); border-radius: 50%; }
+    button.agent { background: var(--tb-agent-bg); }
+    button.agent:hover { background: var(--tb-agent-hover); }
+    button.agent.default { box-shadow: inset 0 0 0 1px var(--tb-active-ring); }
+    button.primary { background: var(--tb-primary); color: var(--tb-primary-text); }
+    button.primary:hover { background: var(--tb-primary-hover); }
+    button.exit:hover { background: var(--tb-exit-hover); color: var(--tb-exit-text); }
+    .sep { width: 1px; height: 20px; background: var(--tb-sep); margin: 0 4px; flex: none; }
+    .hint { color: var(--tb-muted); font-size: 11px; padding: 2px 6px 0; }
+    /* 颜色/线宽条：必须在窗口内，绝对定位到窗口外会点不到（点击落到桌面上） */
+    #styleRow { display: none; margin-top: 6px; gap: 9px; }
+    #styleRow.show { display: flex; }
+    .swatch { width: 19px; height: 19px; border-radius: 5px; border: 1px solid var(--tb-border); cursor: pointer; flex: none; }
+    .swatch.active { border: 2px solid var(--tb-active-ring); }
+    .wdot { background: var(--tb-dot); border-radius: 50%; cursor: pointer; flex: none; }
+    .wdot.active { box-shadow: 0 0 0 2px var(--tb-active-ring); }
   </style>
 </head>
 <body>
   <div id="bar">
-    <div id="flyout"></div>
     <div class="row" id="rowMain"></div>
+    <div class="row" id="styleRow"></div>
     <div class="row" id="rowAgents"></div>
   </div>
   <script src="toolbar.js"></script>

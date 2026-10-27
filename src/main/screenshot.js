@@ -221,7 +221,7 @@ class ScreenshotManager {
 
   // 选区/标注变化：仅更新图片与位置，不重开工具条、不触发自动分析
   handleSelectionUpdate({ rect, fullPng, apiImg }) {
-    if (!this.selection || !rect) return;
+    if (!this.selection || !rect) return { lost: true }; // 会话已被 reselect 清掉，渲染层需重新上报
     const entry = this.overlays.find((o) => o.display.id === this.selection.displayId);
     const b = entry ? entry.display.bounds : { x: 0, y: 0 };
     this.selection.rect = { x: b.x + rect.x, y: b.y + rect.y, w: rect.w, h: rect.h };
@@ -230,6 +230,7 @@ class ScreenshotManager {
     if (this.toolbar && !this.toolbar.isDestroyed() && this._lastToolbarSize) {
       this.layoutToolbar(this._lastToolbarSize);
     }
+    return { lost: false };
   }
 
   sendToActiveOverlay(payload) {

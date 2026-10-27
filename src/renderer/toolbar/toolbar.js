@@ -1,13 +1,13 @@
-/* 浮动工具条：单行 = 标注工具 | 颜色·线宽·撤销·重做·清除 | ✕ 保存 ✔
- * 智能体单独一行。颜色/线宽用浮层，不改变工具条高度。
- * 工具类动作经 toolbar:action 转发给覆盖窗（主进程 sendToActiveOverlay）。
+/* 浮动工具条：单行 = 标注工具 | 颜色·线宽 | 撤销·重做·清除 | ✕ 保存 ✔
+ * 颜色/线宽面板在工具条下方展开（必须在窗口内，否则点击会落到桌面上）。
+ * 每个工具各自记住颜色/线宽；切工具时把该工具的样式一并下发给覆盖窗。
  */
 const bridge = window.api;
 const t = (k) => window.i18n.t(k);
 
 const rowMain = document.getElementById('rowMain');
+const styleRow = document.getElementById('styleRow');
 const rowAgents = document.getElementById('rowAgents');
-const flyout = document.getElementById('flyout');
 
 const svg = (d, vb = '0 0 16 16') =>
   `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg"><path d="${d}"/></svg>`;
@@ -37,13 +37,19 @@ const TOOLS = [
   { id: 'mosaic', icon: ICON.mosaic, key: 'tb.mosaic' },
   { id: 'text', icon: ICON.text, key: 'tb.text' },
 ];
-const COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#5856d6', '#ffffff'];
+const COLORS = ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#af52de', '#000000', '#ffffff'];
 const WIDTHS = [2, 4, 7];
 
-let activeTool = 'rect';
-let activeColor = '#ff3b30';
-let activeWidth = 4;
-let flyoutOpen = false;
+let activeTool = null; // 无默认工具：点选生效，再点取消
+let styleKind = 'color'; // 展开面板显示颜色还是线宽
+let panelOpen = false;
+// 每个工具单独记住颜色/线宽（文字用它当字号档位）；每次截图工具条重建即重置
+const styles = {};
+for (const tool of TOOLS) styles[tool.id] = { color: '#ff3b30', width: tool.id === 'text' ? 4 : 4 };
+
+// 未选中工具时给一个临时样式，避免色板/线宽按钮取不到值
+const FALLBACK_STYLE = { color: '#ff3b30', width: 4 };
+const style = () => (activeTool ? styles[activeTool] : FALLBACK_STYLE);
 
 function btn({ icon, label, cls, title, onClick }) {
   const b = document.createElement('button');
@@ -66,9 +72,7 @@ function act(payload) {
 
 function reportSize() {
   const bar = document.getElementById('bar');
-  const size = { w: bar.offsetWidth + 4, h: bar.offsetHeight + 4 };
-  console.log('[toolbar] reportSize', JSON.stringify(size));
-  bridge.invoke('toolbar:size', size);
+  bridge.invoke('toolbar:size', { w: bar.offsetWidth + 4, h: bar.offsetHeight + 4 });
 }
 
 function renderMain() {
@@ -77,69 +81,80 @@ function renderMain() {
     rowMain.appendChild(
       btn({
         icon: tool.icon, cls: 'tool' + (tool.id === activeTool ? ' active' : ''), title: t(tool.key),
-        onClick: () => { activeTool = tool.id; renderMain(); act({ type: 'tool', value: tool.id }); },
+        onClick: () => {
+          activeTool = activeTool === tool.id ? null : tool.id; // 再点一次 = 取消
+          renderMain();
+          if (panelOpen) renderStyleRow();
+          act({
+            type: 'tool', value: activeTool,
+            color: activeTool ? styles[activeTool].color : null,
+            width: activeTool ? styles[activeTool].width : null,
+          });
+        },
       })
     );
   }
   rowMain.appendChild(sep());
-  const cb = btn({
-    icon: `<span class="sw" style="background:${activeColor}"></span>`, cls: 'tool', title: t('tb.color'),
-    onClick: () => toggleFlyout('color'),
-  });
-  cb.id = 'btnColor';
-  rowMain.appendChild(cb);
-  const wb = btn({
-    icon: `<span class="dot" style="width:${4 + activeWidth}px;height:${4 + activeWidth}px"></span>`, cls: 'tool', title: t('tb.width'),
-    onClick: () => toggleFlyout('width'),
-  });
-  wb.id = 'btnWidth';
-  rowMain.appendChild(wb);
+  rowMain.appendChild(
+    btn({
+      icon: `<span class="sw" style="background:${style().color}"></span>`, cls: 'tool' + (panelOpen && styleKind === 'color' ? ' active' : ''),
+      title: t('tb.color'), onClick: () => togglePanel('color'),
+    })
+  );
+  rowMain.appendChild(
+    btn({
+      icon: `<span class="dot" style="width:${4 + style().width}px;height:${4 + style().width}px"></span>`, cls: 'tool' + (panelOpen && styleKind === 'width' ? ' active' : ''),
+      title: t('tb.width'), onClick: () => togglePanel('width'),
+    })
+  );
+  rowMain.appendChild(sep());
   rowMain.appendChild(btn({ icon: ICON.undo, cls: 'tool', title: t('tb.undo'), onClick: () => act({ type: 'undo' }) }));
   rowMain.appendChild(btn({ icon: ICON.redo, cls: 'tool', title: t('tb.redo'), onClick: () => act({ type: 'redo' }) }));
   rowMain.appendChild(btn({ icon: ICON.clear, cls: 'tool', title: t('tb.clear'), onClick: () => act({ type: 'clear' }) }));
   rowMain.appendChild(sep());
   rowMain.appendChild(btn({ icon: '✕', cls: 'tool exit', title: t('tb.exitTitle'), onClick: () => act({ type: 'exit' }) }));
   rowMain.appendChild(btn({ icon: ICON.save, cls: 'tool', title: t('tb.downloadTitle'), onClick: () => act({ type: 'download' }) }));
-  rowMain.appendChild(btn({ icon: '✔', cls: 'primary tool', title: t('tb.doneTitle'), onClick: () => act({ type: 'done' }) }));
+  rowMain.appendChild(btn({ icon: '✔', cls: 'tool primary', title: t('tb.doneTitle'), onClick: () => act({ type: 'done' }) }));
 }
 
-function toggleFlyout(kind) {
-  const next = !flyoutOpen || flyout.kind !== kind;
-  flyoutOpen = next;
-  flyout.classList.toggle('show', flyoutOpen);
-  if (flyoutOpen) renderFlyout(kind);
+function togglePanel(kind) {
+  panelOpen = !panelOpen || styleKind !== kind;
+  styleKind = kind;
+  styleRow.classList.toggle('show', panelOpen);
+  renderMain();
+  if (panelOpen) renderStyleRow();
+  reportSize(); // 面板展开会改变高度，必须重报，否则超窗部分点不到
 }
 
-function renderFlyout(kind) {
-  flyout.kind = kind;
-  flyout.innerHTML = '';
-  if (kind === 'color') {
+function renderStyleRow() {
+  styleRow.innerHTML = '';
+  if (styleKind === 'color') {
     for (const c of COLORS) {
       const s = document.createElement('span');
-      s.className = 'swatch' + (c === activeColor ? ' active' : '');
+      s.className = 'swatch' + (c === style().color ? ' active' : '');
       s.style.background = c;
       s.addEventListener('click', () => {
-        activeColor = c;
+        style().color = c;
         act({ type: 'color', value: c });
-        renderFlyout('color');
+        renderStyleRow();
         renderMain();
       });
-      flyout.appendChild(s);
+      styleRow.appendChild(s);
     }
   } else {
     for (const w of WIDTHS) {
       const d = document.createElement('span');
-      d.className = 'wdot' + (w === activeWidth ? ' active' : '');
+      d.className = 'wdot' + (w === style().width ? ' active' : '');
       const px = 4 + w * 2;
       d.style.width = px + 'px';
       d.style.height = px + 'px';
       d.addEventListener('click', () => {
-        activeWidth = w;
+        style().width = w;
         act({ type: 'width', value: w });
-        renderFlyout('width');
+        renderStyleRow();
         renderMain();
       });
-      flyout.appendChild(d);
+      styleRow.appendChild(d);
     }
   }
 }
@@ -151,8 +166,7 @@ bridge.on('toolbar:init', ({ agents, defaultAgentId, autoAnalyze }) => {
   } catch (e) {
     console.error('[toolbar] 渲染失败:', e);
   }
-  // 尺寸必须上报，否则主进程永远不 show
-  reportSize();
+  reportSize(); // 不上报尺寸主进程永远不会 show
 });
 
 function renderAgents(agents, defaultAgentId, autoAnalyze) {
@@ -166,13 +180,14 @@ function renderAgents(agents, defaultAgentId, autoAnalyze) {
     return;
   }
   for (const a of agents) {
-    const isDefault = a.id === defaultAgentId;
+    // 默认标记只在开了自动分析时才有意义，否则不给高亮
+    const showDefault = a.id === defaultAgentId && autoAnalyze;
     rowAgents.appendChild(
       btn({
         icon: a.icon || '🤖',
         label: a.name,
-        cls: 'agent' + (isDefault ? ' default' : ''),
-        title: (a.systemPrompt || '').slice(0, 120) + (isDefault ? '\n' + t(autoAnalyze ? 'tb.defaultAuto' : 'tb.default') : ''),
+        cls: 'agent' + (showDefault ? ' default' : ''),
+        title: (a.systemPrompt || '').slice(0, 120) + (showDefault ? '\n' + t('tb.defaultAuto') : ''),
         onClick: () => act({ type: 'agent', agentId: a.id }),
       })
     );

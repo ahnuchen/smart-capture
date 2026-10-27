@@ -24,7 +24,7 @@ const dict = {
     // 覆盖窗
     'overlay.tip': '<b>Enter / 双击 / ✔完成</b> 复制并完成 · <b>ESC</b> 重新选区',
     'overlay.pickFmt': 'Shift 切换 HEX / RGB / HSL',
-    'overlay.textPh': '输入文字',
+
     // 工具条
     'tb.done': '完成',
     'tb.doneTitle': '复制截图到剪贴板并完成（Enter / 双击选区）',
@@ -43,7 +43,7 @@ const dict = {
     'tb.pencil': '画笔',
     'tb.highlight': '荧光笔（整片半透明覆盖）',
     'tb.mosaic': '马赛克（拖拽框选区域）',
-    'tb.text': '文字（点击画布输入）',
+    'tb.text': '文字',
     'tb.color': '颜色',
     'tb.width': '线宽',
     'tb.undo': '撤销（Ctrl+Z）',
@@ -209,7 +209,7 @@ const dict = {
     'win.settings': 'Settings · Smart Capture',
     'overlay.tip': '<b>Enter / Double-click / ✔Done</b> Copy & finish · <b>ESC</b> Reselect',
     'overlay.pickFmt': 'Shift to cycle HEX / RGB / HSL',
-    'overlay.textPh': 'Type text',
+
     'tb.done': 'Done',
     'tb.doneTitle': 'Copy screenshot to clipboard and finish (Enter / double-click selection)',
     'tb.download': 'Save',
@@ -227,7 +227,7 @@ const dict = {
     'tb.pencil': 'Pencil',
     'tb.highlight': 'Highlighter (translucent cover)',
     'tb.mosaic': 'Mosaic (drag a box)',
-    'tb.text': 'Text (click to type)',
+    'tb.text': 'Text',
     'tb.color': 'Color',
     'tb.width': 'Stroke width',
     'tb.undo': 'Undo (Ctrl+Z)',

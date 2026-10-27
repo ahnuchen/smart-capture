@@ -48,7 +48,7 @@ document.getElementById('pickFmt').textContent = window.i18n.t('overlay.pickFmt'
 
 /* ---------- 标注状态 ---------- */
 let fc = null; // fabric.Canvas
-let tool = 'rect';
+let tool = null; // 未选中工具 = 画布不接收事件，避免干扰选区/热区
 let color = '#ff3b30';
 let strokeWidth = 4;
 let history = []; // 每步 fc JSON
@@ -307,7 +307,13 @@ async function flushUpdate() {
     bridge._sent = true;
     bridge.invoke('shot:selection', payload).catch((e) => console.error('[overlay] shot:selection 失败:', e.message));
   } else {
-    bridge.invoke('shot:selection-update', payload);
+    // 主进程可能已因 reselect 丢掉会话，此时 selection-update 会被静默忽略 → 重新建会话
+    bridge.invoke('shot:selection-update', payload).then((r) => {
+      if (r && r.lost) {
+        bridge._sent = false;
+        flushUpdate();
+      }
+    }).catch((e) => console.error('[overlay] shot:selection-update 失败:', e.message));
   }
 }
 
@@ -416,18 +422,15 @@ function setupAnnotation() {
   fc.on('mouse:down', onFcDown);
   fc.on('mouse:move', onFcMove);
   fc.on('mouse:up', onFcUp);
-  fc.on('path:created', () => commit());
+  fc.on('path:created', (e) => { lockObject(e && e.path); commit(); });
   fc.on('object:modified', commit);
   fc.on('text:editing:entered', () => { editingText = true; });
   fc.on('text:editing:exited', (e) => {
     editingText = false;
     const obj = e && e.target;
-    if (obj && (!String(obj.text || '').trim() || obj.text === placeholderText())) fc.remove(obj);
+    if (obj && !String(obj.text || '').trim()) fc.remove(obj);
+    lockObject(obj);
     commit();
-  });
-  fc.on('object:added', (e) => {
-    const o = e && e.target;
-    if (o && o.type === 'i-text') o.set({ selectable: true, evented: true });
   });
 }
 
@@ -449,25 +452,32 @@ function resetConfirmState() {
 
 function applyTool() {
   if (!fc) return;
-  fc.isDrawingMode = tool === 'pencil';
-  fc.selection = tool === 'pencil' ? false : true;
-  // 没有独立「选择」工具：对象始终可点选拖动，只有点空白处才触发画形状
-  fc.forEachObject((o) => {
-    o.set({ selectable: true, evented: true });
-  });
-  if (fc.isDrawingMode) {
-    const brush = new fabric.PencilBrush(fc);
-    brush.width = strokeWidth;
-    brush.color = color;
-    fc.freeDrawingBrush = brush;
+  const on = !!tool;
+  fc.isDrawingMode = on && tool === 'pencil';
+  fc.selection = false; // 标注对象不参与画布框选
+  // 未选中工具时整块画布不接收事件，也不画光标，彻底不干扰选区与调整热区
+  fc.forEachObject((o) => lockObject(o));
+  if (fc.upperCanvasEl) fc.upperCanvasEl.style.pointerEvents = on ? 'auto' : 'none';
+  if (on) {
+    if (fc.isDrawingMode) {
+      const brush = new fabric.PencilBrush(fc);
+      brush.width = strokeWidth;
+      brush.color = color;
+      fc.freeDrawingBrush = brush;
+    }
+    const el = document.getElementById('ann');
+    if (el) el.style.cursor = 'crosshair';
   }
-  const el = document.getElementById('ann');
-  if (el) el.style.cursor = 'crosshair';
+}
+
+function lockObject(o) {
+  if (!o) return o;
+  return o.set({ selectable: false, evented: false, hasControls: false, hasBorders: false, hoverCursor: 'default' });
 }
 
 function setTool(next) {
   if (next === tool) return;
-  fc && fc.discardActiveObject();
+  if (fc) fc.discardActiveObject();
   tool = next;
   applyTool();
   fc && fc.requestRenderAll();
@@ -475,7 +485,12 @@ function setTool(next) {
 
 function handleToolCommand(cmd) {
   switch (cmd.type) {
-    case 'tool': setTool(cmd.value); break;
+    case 'tool':
+      // 工具栏按工具记忆样式，切工具时一并下发；value 为 null 表示取消工具
+      if (cmd.value && cmd.color) color = cmd.color;
+      if (cmd.value && cmd.width) strokeWidth = cmd.width;
+      setTool(cmd.value || null);
+      break;
     case 'color': color = cmd.value; applyTool(); break;
     case 'width': strokeWidth = cmd.value; applyTool(); break;
     case 'undo': doUndo(); break;
@@ -485,16 +500,15 @@ function handleToolCommand(cmd) {
 }
 
 function onFcDown(opt) {
-  if (!fc || fc.isDrawingMode) return;
+  if (!fc || !tool || fc.isDrawingMode) return;
   const p = fc.getPointer(opt.e);
-  // 点在已有标注上 = 拖动它，不开新框；文字输入中同样不触发
-  if (editingText || opt.target) return;
+  if (editingText) return; // 文字输入中不触发画框
   if (tool === 'text') { addText(p.x, p.y); return; }
   if (tool === 'mosaic') {
+    if (!mosaicFull) buildMosaicFull();
     if (!mosaicFull) return;
     mosaicDraft = { x: p.x, y: p.y };
     draft = cloneMosaic();
-    draft.set({ selectable: false, evented: false });
     fc.add(draft);
     setMosaicBox(draft, p.x, p.y, 0, 0);
     return;
@@ -502,12 +516,12 @@ function onFcDown(opt) {
   if (['rect', 'ellipse', 'line', 'arrow', 'highlighter'].includes(tool)) {
     drawStart = { x: p.x, y: p.y };
     draft = createShape(tool, p.x, p.y, p.x, p.y);
-    if (draft) { draft.set({ selectable: false, evented: false }); fc.add(draft); }
+    if (draft) { lockObject(draft); fc.add(draft); }
   }
 }
 
 function onFcMove(opt) {
-  if (!fc || fc.isDrawingMode || !draft) return;
+  if (!fc || !tool || fc.isDrawingMode || !draft) return;
   const p = fc.getPointer(opt.e);
   if (tool === 'mosaic' && mosaicDraft) {
     setMosaicBox(draft, Math.min(mosaicDraft.x, p.x), Math.min(mosaicDraft.y, p.y), Math.abs(p.x - mosaicDraft.x), Math.abs(p.y - mosaicDraft.y));
@@ -521,7 +535,7 @@ function onFcMove(opt) {
 }
 
 function onFcUp(opt) {
-  if (!fc || fc.isDrawingMode) return;
+  if (!fc || !tool || fc.isDrawingMode) return;
   const p = fc.getPointer(opt.e);
   if (tool === 'mosaic' && draft) {
     const start = mosaicDraft;
@@ -530,7 +544,7 @@ function onFcUp(opt) {
     if (w < 4 || h < 4) fc.remove(draft);
     else {
       setMosaicBox(draft, Math.min(start.x, p.x), Math.min(start.y, p.y), w, h);
-      draft.set({ selectable: true, evented: true });
+      lockObject(draft);
       commit();
     }
     draft = null;
@@ -541,7 +555,7 @@ function onFcUp(opt) {
     if (w < 4 && h < 4) {
       fc.remove(draft); // 太小，丢弃
     } else {
-      draft.set({ selectable: true, evented: true });
+      lockObject(draft);
       commit();
     }
     draft = null;
@@ -591,13 +605,9 @@ function updateShape(obj, kind, x1, y1, x2, y2) {
 }
 
 /* ---------- 文字标注 ---------- */
-function placeholderText() {
-  return window.i18n.t('overlay.textPh');
-}
-
 function addText(x, y) {
   if (!fc) return;
-  const t = new fabric.IText(placeholderText(), {
+  const t = new fabric.IText('', {
     left: x,
     top: y,
     fontFamily: '"Microsoft YaHei", "Segoe UI", sans-serif',
@@ -610,7 +620,6 @@ function addText(x, y) {
   fc.add(t);
   fc.setActiveObject(t);
   t.enterEditing();
-  t.selectAll();
   fc.requestRenderAll();
 }
 
@@ -679,9 +688,7 @@ function commit() {
 function restore(snap) {
   if (!fc) return;
   fc.loadFromJSON(snap, () => {
-    fc.getObjects().forEach((o) => {
-      o.set({ selectable: true, evented: true });
-    });
+    fc.getObjects().forEach(lockObject);
     fc.renderAll();
     scheduleUpdate();
   });
