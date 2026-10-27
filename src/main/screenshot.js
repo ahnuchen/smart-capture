@@ -9,8 +9,26 @@ const DEBUG = !!process.argv.find((a) => a === '--selftest' || a === '--dev');
 
 function attachConsoleTag(win, tag) {
   if (!DEBUG) return;
-  win.webContents.on('console-message', (_e, _level, message, line, source) => {
-    console.log(`[${tag}]:`, message, `(${source}:${line})`);
+  // Electron 33: (event, messageDetails)，字段在第二个参数上（旧的 5 位置参数写法已失效）
+  win.webContents.on('console-message', (_e, d) => {
+    if (!d) return;
+    console.log(`[${tag}]:`, d.message, `(${d.sourceUrl}:${d.lineNumber})`);
+  });
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[${tag}] 页面加载失败:`, code, desc, url);
+  });
+  win.webContents.on('render-process-gone', (_e, d) => {
+    console.error(`[${tag}] 渲染进程消失:`, JSON.stringify(d));
+  });
+}
+
+// 覆盖窗/工具条是隐形的透明窗，出问题时只能靠 devtools 看渲染层
+function attachDevtools(win, tag) {
+  if (!DEBUG) return;
+  win.webContents.once('did-finish-load', () => {
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.webContents.openDevTools({ mode: 'detach' });
+    }, 800);
   });
 }
 
@@ -116,6 +134,7 @@ class ScreenshotManager {
       win.setMenu(null);
       win.setAlwaysOnTop(true, 'screen-saver');
       attachConsoleTag(win, `overlay-${display.id}`);
+      attachDevtools(win, `overlay-${display.id}`);
       const entry = { win, display };
       this.overlays.push(entry);
       win.loadFile(path.join(__dirname, '../renderer/overlay/index.html'));
@@ -256,6 +275,8 @@ class ScreenshotManager {
     win.setMenu(null);
     win.setAlwaysOnTop(true, 'screen-saver');
     attachConsoleTag(win, 'toolbar');
+    attachDevtools(win, 'toolbar');
+    this._lastToolbarSize = null; // 新一轮工具条，等待渲染层上报尺寸
     this.toolbar = win;
     win.loadFile(path.join(__dirname, '../renderer/toolbar/index.html'));
     win.webContents.once('did-finish-load', () => {
@@ -266,6 +287,12 @@ class ScreenshotManager {
         defaultAgentId: s.defaultAgentId,
         autoAnalyze: s.autoAnalyze,
       });
+      // 兜底：渲染层没上报尺寸也要让窗口可见，否则表现为"拖完框什么都没有"
+      setTimeout(() => {
+        if (win.isDestroyed() || this._lastToolbarSize) return;
+        console.warn('[screenshot] toolbar size 未上报，使用兜底尺寸显示');
+        this.layoutToolbar({ w: 380, h: 120 });
+      }, 700);
     });
     win.on('closed', () => {
       if (this.toolbar === win) this.toolbar = null;

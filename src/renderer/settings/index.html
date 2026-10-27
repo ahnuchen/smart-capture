@@ -136,6 +136,7 @@
     .model-item.active { border-color: var(--accent); background: var(--accent-bg); }
     .tag { font-size: 10.5px; padding: 1.5px 7px; border-radius: 12px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
     .tag.vision { color: #6ee7b7; border-color: rgba(52,211,153,.4); }
+    .tag.thinking { color: #fcd34d; border-color: rgba(251,191,36,.4); }
     .agent-item .ico { font-size: 20px; }
     .agent-item .name { font-weight: 600; }
     .agent-item .prompt-preview {
@@ -242,6 +243,9 @@
           <div class="field"><label data-i18n="pv.meName"></label><input type="text" id="meName" data-i18n-ph="pv.meNamePh" /></div>
           <div class="field">
             <label class="switch"><input type="checkbox" id="meVision" /> <span data-i18n="pv.meVision"></span></label>
+          </div>
+          <div class="field">
+            <label class="switch"><input type="checkbox" id="meThinking" /> <span data-i18n="pv.meThinking"></span></label>
           </div>
           <div class="grid-actions">
             <button id="meSave" class="primary small" data-i18n="pv.save"></button>

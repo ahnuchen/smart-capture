@@ -183,7 +183,7 @@ function setupIpc() {
     broadcastSettings();
     return { ok: true, settings: JSON.parse(JSON.stringify(store.data)) };
   });
-  ipcMain.handle('settings:test-model', async (_e, { provider: cfg, modelId }) => {
+  ipcMain.handle('settings:test-model', async (_e, { provider: cfg, modelId, thinking }) => {
     if (!cfg || !modelId) return { ok: false, error: t('pv.testNoConfig') };
     let base;
     try {
@@ -199,6 +199,7 @@ function setupIpc() {
       const { content } = await chatStream({
         provider: { baseURL: cfg.baseURL, apiKey: cfg.apiKey },
         model: modelId,
+        thinking: !!thinking,
         messages: [{ role: 'user', content: 'ping' }],
         onDelta: () => {},
         signal: ctrl.signal,
@@ -358,13 +359,37 @@ if (!gotLock) {
     }
     await sleep(1500);
     await snap(screenshot.toolbar, 'toolbar.png');
+    // 选区热区断言：8 手柄 + 4 边带存在、已定位、层序正确（手柄在边带之后 = 优先命中）
+    for (const o of screenshot.overlays) {
+      if (o.win.isDestroyed()) continue;
+      try {
+        const adj = await o.win.webContents.executeJavaScript(`(() => {
+          const adj = document.getElementById('adj');
+          const hs = Array.from(adj.querySelectorAll('.handle'));
+          return {
+            handles: hs.length,
+            bands: adj.querySelectorAll('.band').length,
+            lastIsHandle: adj.lastElementChild && adj.lastElementChild.classList.contains('handle'),
+            positioned: hs.every((h) => h.style.left && h.style.top),
+            handleSize: hs[0] ? getComputedStyle(hs[0]).width : null,
+            fabricLoaded: typeof window.fabric !== 'undefined',
+          };
+        })()`);
+        console.log('[selftest] 选区热区:', JSON.stringify(adj));
+      } catch (e) {
+        console.error('[selftest] 热区断言失败:', e.message);
+      }
+      break;
+    }
     // 工具条 DOM 断言：按钮数量与是否溢出
     if (screenshot.toolbar && !screenshot.toolbar.isDestroyed()) {
       try {
         const info = await screenshot.toolbar.webContents.executeJavaScript(`(() => {
           const bar = document.getElementById('bar');
           return {
-            actions: document.querySelectorAll('#rowActions button').length,
+            tools: document.querySelectorAll('#rowMain .tool').length,
+            output: document.querySelectorAll('#rowMain button').length,
+            icons: document.querySelectorAll('#rowMain .ico svg').length,
             agents: document.querySelectorAll('#rowAgents button').length,
             overflow: bar.scrollHeight > bar.clientHeight + 2,
             w: bar.offsetWidth,
@@ -372,9 +397,12 @@ if (!gotLock) {
           };
         })()`);
         console.log('[selftest] toolbar DOM:', JSON.stringify(info));
+        console.log('[selftest] toolbar visible:', screenshot.toolbar.isVisible(), 'bounds:', JSON.stringify(screenshot.toolbar.getBounds()));
       } catch (e) {
         console.error('[selftest] toolbar DOM assert failed:', e.message);
       }
+    } else {
+      console.error('[selftest] toolbar window MISSING (showToolbar 未被调用或选区未上报)');
     }
     console.log('[selftest] toolbar action: agent=translate');
     await screenshot.handleToolbarAction({ type: 'agent', agentId: 'translate' });

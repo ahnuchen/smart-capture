@@ -143,6 +143,7 @@ function renderModels() {
       <span class="grow"><div>${m.name || m.id}</div><div class="mid">${m.id}</div></span>
       <span class="test-result"></span>
       ${m.vision ? '<span class="tag vision">' + window.i18n.t('pv.vision') + '</span>' : '<span class="tag">' + window.i18n.t('pv.text') + '</span>'}
+      ${m.thinking ? '<span class="tag thinking">' + window.i18n.t('pv.thinking') + '</span>' : ''}
       <button class="small op-test">${window.i18n.t('pv.test')}</button>
       <button class="small op-edit-model">${window.i18n.t('pv.editModel')}</button>
       ${(p.models || []).length > 1 ? '<button class="small danger op-del-model">' + window.i18n.t('pv.delModel') + '</button>' : ''}
@@ -159,7 +160,7 @@ function renderModels() {
       e.target.disabled = true;
       resultEl.textContent = window.i18n.t('pv.testing');
       resultEl.className = 'test-result';
-      const res = await bridge.invoke('settings:test-model', { provider: { baseURL: p.baseURL, apiKey: p.apiKey }, modelId: m.id });
+      const res = await bridge.invoke('settings:test-model', { provider: { baseURL: p.baseURL, apiKey: p.apiKey }, modelId: m.id, thinking: !!m.thinking });
       e.target.disabled = false;
       if (res && res.ok) {
         resultEl.textContent = window.i18n.t('pv.testOk', (res.latencyMs / 1000).toFixed(1));
@@ -194,6 +195,7 @@ function openModelEditor(p, m) {
   $('meId').value = m.id;
   $('meName').value = m.name || '';
   $('meVision').checked = !!m.vision;
+  $('meThinking').checked = !!m.thinking;
   $('modelEditor').style.display = 'block';
   $('meId').focus();
 }
@@ -209,6 +211,7 @@ $('meSave').addEventListener('click', async () => {
     id,
     name: $('meName').value.trim() || id,
     vision: $('meVision').checked,
+    thinking: $('meThinking').checked,
   });
   if (settings.activeModelId === originalId) settings.activeModelId = id;
   $('modelEditor').style.display = 'none';
@@ -244,7 +247,7 @@ function openProviderEditor(p) {
   $('peBase').value = p.baseURL || '';
   $('peKey').value = p.apiKey || '';
   $('peModels').value = (p.models || [])
-    .map((m) => `${m.id} | ${m.name || m.id}${m.vision ? ' | v' : ''}`)
+    .map((m) => `${m.id} | ${m.name || m.id}${m.vision ? ' | v' : ''}${m.thinking ? ' | t' : ''}`)
     .join('\n');
   $('peDelete').style.display = 'inline-block';
   $('providerEditor').style.display = 'block';
@@ -264,8 +267,10 @@ $('peSave').addEventListener('click', async () => {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const [id, label, flag] = line.split('|').map((x) => (x || '').trim());
-      return { id, name: label || id, vision: (flag || '').toLowerCase() === 'v' };
+      const parts = line.split('|').map((x) => (x || '').trim());
+      const id = parts[0];
+      const flags = new Set(parts.slice(2).flatMap((f) => f.toLowerCase().split(/[,\s]+/)).filter(Boolean));
+      return { id, name: parts[1] || id, vision: flags.has('v'), thinking: flags.has('t') };
     })
     .filter((m) => m.id);
   if (!name || !base) return dlgAlert(window.i18n.t('pv.alertNameBase'));

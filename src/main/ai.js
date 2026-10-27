@@ -9,10 +9,14 @@ function sleep(ms) {
  * 流式对话。onDelta(kind, delta, full) 中 kind 为 'content' | 'reasoning'。
  * 返回 { content, reasoning } 全文。
  */
-async function chatStream({ provider, model, messages, onDelta, signal }) {
+async function chatStream({ provider, model, messages, onDelta, signal, thinking }) {
   const url = String(provider.baseURL || '').replace(/\/+$/, '') + '/chat/completions';
   const maxRetries = 4;
   let lastErr = null;
+
+  // 思考模式按模型开关；不发送时保持平台默认（非思考）
+  const body = { model, messages, stream: true };
+  if (thinking !== undefined) body.thinking = { type: thinking ? 'enabled' : 'disabled' };
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     let res;
@@ -23,7 +27,7 @@ async function chatStream({ provider, model, messages, onDelta, signal }) {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${provider.apiKey}`,
         },
-        body: JSON.stringify({ model, messages, stream: true }),
+        body: JSON.stringify(body),
         signal,
       });
     } catch (e) {

@@ -68,7 +68,7 @@ const BUILTIN_AGENTS = [
     id: 'translate',
     icon: '🌐',
     builtIn: true,
-    nameZh: '翻译',
+    nameZh: '译',
     nameEn: 'Translate',
     promptZh:
       '你是一个专业翻译。用户会给你一张截图，请提取图中出现的所有文字并翻译成简体中文。\n' +
@@ -89,7 +89,7 @@ const BUILTIN_AGENTS = [
     id: 'ocr',
     icon: '📄',
     builtIn: true,
-    nameZh: '文字提取',
+    nameZh: '文',
     nameEn: 'Text Extraction',
     promptZh:
       '你是一个高精度 OCR 助手。请提取截图中的全部文字，要求：\n' +

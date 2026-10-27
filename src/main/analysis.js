@@ -26,6 +26,7 @@ class AnalysisManager {
       modelId,
       modelName: meta ? meta.name : modelId,
       vision: meta ? !!meta.vision : true,
+      thinking: meta ? !!meta.thinking : false,
     };
   }
 
@@ -47,7 +48,7 @@ class AnalysisManager {
     const agent = this.store.getAgent(agentId);
     if (!agent) return;
     const lang = this.store.data.language || 'zh';
-    const { provider, modelId, modelName, vision } = this.resolveModel(agent);
+    const { provider, modelId, modelName, vision, thinking } = this.resolveModel(agent);
     const session = {
       id: crypto.randomUUID(),
       imageFull,
@@ -58,6 +59,7 @@ class AnalysisManager {
       modelId,
       modelName,
       vision,
+      thinking,
       sourceRect: sourceRect || null,
       source: source || 'manual',
       messages: this.buildInitialMessages({ agent, imageApi }),
@@ -150,6 +152,7 @@ class AnalysisManager {
     chatStream({
       provider: session.provider,
       model: session.modelId,
+      thinking: session.thinking,
       messages: session.messages,
       signal: ctrl.signal,
       onDelta: (kind, delta, full) => {
@@ -225,8 +228,8 @@ class AnalysisManager {
           session.agent = agent;
           const lang = this.store.data.language || 'zh';
           session.agentDisplayName = agentName(agent, lang);
-          const { provider, modelId, modelName, vision } = this.resolveModel(agent);
-          Object.assign(session, { provider, modelId, modelName, vision });
+          const { provider, modelId, modelName, vision, thinking } = this.resolveModel(agent);
+          Object.assign(session, { provider, modelId, modelName, vision, thinking });
           session.messages = this.buildInitialMessages(session);
           if (this.resultWin && !this.resultWin.isDestroyed()) {
             this.resultWin.webContents.send('result:init', {

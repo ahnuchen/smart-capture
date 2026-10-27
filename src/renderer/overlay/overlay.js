@@ -19,6 +19,10 @@ const annWrap = document.getElementById('annWrap');
 const adj = document.getElementById('adj');
 const bridge = window.api;
 
+// 透明窗没有 devtools 入口时，靠 console-message 转发到终端
+window.addEventListener('error', (e) => console.error('[overlay] uncaught:', e.message, (e.error && e.error.stack) || ''));
+window.addEventListener('unhandledrejection', (e) => console.error('[overlay] rejection:', (e.reason && e.reason.stack) || e.reason));
+
 let displayId = null;
 let mode = 'idle'; // idle | select | confirm
 let startX = 0, startY = 0;
@@ -44,14 +48,16 @@ document.getElementById('pickFmt').textContent = window.i18n.t('overlay.pickFmt'
 
 /* ---------- 标注状态 ---------- */
 let fc = null; // fabric.Canvas
-let tool = 'select';
+let tool = 'rect';
 let color = '#ff3b30';
 let strokeWidth = 4;
 let history = []; // 每步 fc JSON
 let histIdx = -1;
 let draft = null; // 拖拽创建中的临时对象
 let drawStart = null; // {x,y} 画布内坐标
-let mosaicDraft = null; // 马赛克拖拽 {x,y}
+let mosaicDraft = null; // 马赛克拖拽起点 {x,y}
+let mosaicFull = null; // 覆盖整个选区的像素化底图（fabric.Image）
+let editingText = false; // 正在输入标注文字
 
 bridge.on('overlay:init', ({ image, displayId: id }) => {
   displayId = id;
@@ -126,7 +132,7 @@ document.addEventListener('mouseup', (e) => {
 
 document.addEventListener('dblclick', (e) => {
   if (mode === 'confirm' && insideRect(e.clientX, e.clientY)) {
-    flushUpdate().then(() => bridge.invoke('shot:copy-finish'));
+    flushUpdate().then(copyFinish);
   }
 });
 
@@ -140,7 +146,19 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+function isEditingText() {
+  if (editingText) return true;
+  const a = fc && fc.getActiveObject && fc.getActiveObject();
+  return !!(a && a.isEditing);
+}
+
 function handleEscape() {
+  if (mode === 'confirm' && isEditingText()) {
+    const a = fc.getActiveObject();
+    if (a && a.exitEditing) a.exitEditing();
+    editingText = false;
+    return; // 文字编辑中 ESC 只退出编辑，不要重选区
+  }
   if (mode === 'confirm') {
     bridge.invoke('shot:reselect');
     resetConfirmState();
@@ -154,8 +172,12 @@ function handleEscape() {
   }
 }
 
+function copyFinish() {
+  return bridge.invoke('shot:copy-finish').catch((e) => console.error('[overlay] copy-finish 失败:', e.message));
+}
+
 function handleEnter() {
-  if (mode === 'confirm') flushUpdate().then(() => bridge.invoke('shot:copy-finish'));
+  if (mode === 'confirm' && !isEditingText()) flushUpdate().then(copyFinish);
 }
 
 function insideRect(x, y) {
@@ -188,9 +210,15 @@ async function confirmSelection() {
   hidePicker();
   drawSelection(true);
   showTip();
-  setupAnnotation();
-  layoutSel();
-  await flushUpdate(); // 首次上报选区（无标注）→ 主进程显示工具条
+  // 先上报选区（工具条依赖它），标注层失败也不能拖垮选区流程
+  await flushUpdate();
+  try {
+    setupAnnotation();
+    layoutSel();
+  } catch (e) {
+    console.error('[overlay] 标注层初始化失败:', e && e.message);
+    if (typeof fabric === 'undefined') hideTip();
+  }
 }
 
 function showTip() {
@@ -260,8 +288,16 @@ function scheduleUpdate() {
 async function flushUpdate() {
   clearTimeout(updateTimer);
   if (!rect) return;
-  const { fullPng, apiImg } = await renderComposite();
+  let composited;
+  try {
+    composited = await renderComposite();
+  } catch (e) {
+    console.error('[overlay] 合成失败，选区未上报:', (e && e.stack) || e);
+    return;
+  }
+  const { fullPng, apiImg } = composited;
   const payload = {
+    displayId,
     rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.w), h: Math.round(rect.h) },
     fullPng,
     apiImg,
@@ -269,7 +305,7 @@ async function flushUpdate() {
   // 首次 confirm 用 shot:selection 建会话；之后用 selection-update 增量刷新
   if (!bridge._sent) {
     bridge._sent = true;
-    bridge.invoke('shot:selection', payload);
+    bridge.invoke('shot:selection', payload).catch((e) => console.error('[overlay] shot:selection 失败:', e.message));
   } else {
     bridge.invoke('shot:selection-update', payload);
   }
@@ -285,7 +321,10 @@ function layoutSel() {
   annWrap.style.display = 'block';
   annWrap.style.left = rect.x + 'px';
   annWrap.style.top = rect.y + 'px';
-  if (fc) fc.setDimensions({ width: rect.w, height: rect.h });
+  if (fc) {
+    fc.setDimensions({ width: rect.w, height: rect.h });
+    buildMosaicFull(); // 像素化底图与选区绑定，调整选区后需重建
+  }
   positionAdj();
 }
 
@@ -300,30 +339,33 @@ function positionAdj() {
     const el = adj.querySelector(`.handle[data-cur=${k}]`);
     if (el) { el.style.left = px + 'px'; el.style.top = py + 'px'; }
   }
+  // 热区 24px（见 .handle::after），边带在角上让位 12px，避免角手柄抢走边手柄的点击
+  const BAND = 12;
   const setBand = (side, l, t, ww, hh) => {
     const el = adj.querySelector(`.band.${side}`);
     if (el) { el.style.left = l + 'px'; el.style.top = t + 'px'; el.style.width = ww + 'px'; el.style.height = hh + 'px'; }
   };
-  setBand('n', x + 9, y - 3, Math.max(0, w - 18), 7);
-  setBand('s', x + 9, y + h - 4, Math.max(0, w - 18), 7);
-  setBand('w', x - 3, y + 9, 7, Math.max(0, h - 18));
-  setBand('e', x + w - 4, y + 9, 7, Math.max(0, h - 18));
+  setBand('n', x + BAND, y - BAND + 1, Math.max(0, w - BAND * 2), 24);
+  setBand('s', x + BAND, y + h - BAND + 1, Math.max(0, w - BAND * 2), 24);
+  setBand('w', x - BAND + 1, y + BAND, 24, Math.max(0, h - BAND * 2));
+  setBand('e', x + w - BAND + 1, y + BAND, 24, Math.max(0, h - BAND * 2));
 }
 
 function buildAdj() {
   adj.innerHTML = '';
-  for (const k of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
-    const el = document.createElement('div');
-    el.className = 'handle';
-    el.dataset.cur = k;
-    el.addEventListener('mousedown', (e) => startAdjDrag(e, k));
-    adj.appendChild(el);
-  }
+  // 边带先入 DOM、手柄后入：重叠处手柄优先（否则边带会盖住边中点手柄抢走缩放点击）
   for (const side of ['n', 's', 'w', 'e']) {
     const el = document.createElement('div');
     el.className = 'band ' + side;
     el.dataset.cur = 'move';
     el.addEventListener('mousedown', (e) => startAdjDrag(e, 'move'));
+    adj.appendChild(el);
+  }
+  for (const k of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+    const el = document.createElement('div');
+    el.className = 'handle';
+    el.dataset.cur = k;
+    el.addEventListener('mousedown', (e) => startAdjDrag(e, k));
     adj.appendChild(el);
   }
 }
@@ -360,7 +402,7 @@ function startAdjDrag(e, kind) {
 
 /* ---------- Fabric 标注 ---------- */
 function setupAnnotation() {
-  if (fc) return;
+  if (fc) { buildAdj(); applyTool(); return; } // 重新选区：画布复用，热区重建
   fc = new fabric.Canvas('ann', {
     selection: true,
     preserveObjectStacking: true,
@@ -374,21 +416,28 @@ function setupAnnotation() {
   fc.on('mouse:down', onFcDown);
   fc.on('mouse:move', onFcMove);
   fc.on('mouse:up', onFcUp);
-  fc.on('path:created', (e) => {
-    // 画笔/荧光笔落笔完成
-    if (tool === 'highlighter' && e.path) {
-      e.path.set({ opacity: 0.4, strokeLineCap: 'round', strokeLineJoin: 'round' });
-      fc.requestRenderAll();
-    }
+  fc.on('path:created', () => commit());
+  fc.on('object:modified', commit);
+  fc.on('text:editing:entered', () => { editingText = true; });
+  fc.on('text:editing:exited', (e) => {
+    editingText = false;
+    const obj = e && e.target;
+    if (obj && (!String(obj.text || '').trim() || obj.text === placeholderText())) fc.remove(obj);
     commit();
   });
-  fc.on('object:modified', commit);
+  fc.on('object:added', (e) => {
+    const o = e && e.target;
+    if (o && o.type === 'i-text') o.set({ selectable: true, evented: true });
+  });
 }
 
 function resetConfirmState() {
   annWrap.style.display = 'none';
   adj.style.display = 'none';
   bridge._sent = false;
+  editingText = false;
+  mosaicFull = null;
+  mosaicDraft = null;
   if (fc) {
     fc.clear();
     fc.getObjects().slice().forEach((o) => fc.remove(o));
@@ -400,20 +449,20 @@ function resetConfirmState() {
 
 function applyTool() {
   if (!fc) return;
-  fc.isDrawingMode = tool === 'pencil' || tool === 'highlighter';
-  fc.selection = tool === 'select';
+  fc.isDrawingMode = tool === 'pencil';
+  fc.selection = tool === 'pencil' ? false : true;
+  // 没有独立「选择」工具：对象始终可点选拖动，只有点空白处才触发画形状
   fc.forEachObject((o) => {
-    o.selectable = tool === 'select';
-    o.evented = tool === 'select';
+    o.set({ selectable: true, evented: true });
   });
   if (fc.isDrawingMode) {
     const brush = new fabric.PencilBrush(fc);
-    brush.width = tool === 'highlighter' ? strokeWidth * 4 : strokeWidth;
-    brush.color = tool === 'highlighter' ? hexToRgba(color, 0.4) : color;
+    brush.width = strokeWidth;
+    brush.color = color;
     fc.freeDrawingBrush = brush;
   }
   const el = document.getElementById('ann');
-  if (el) el.style.cursor = tool === 'select' ? 'default' : 'crosshair';
+  if (el) el.style.cursor = 'crosshair';
 }
 
 function setTool(next) {
@@ -436,13 +485,21 @@ function handleToolCommand(cmd) {
 }
 
 function onFcDown(opt) {
-  if (!fc) return;
+  if (!fc || fc.isDrawingMode) return;
   const p = fc.getPointer(opt.e);
+  // 点在已有标注上 = 拖动它，不开新框；文字输入中同样不触发
+  if (editingText || opt.target) return;
+  if (tool === 'text') { addText(p.x, p.y); return; }
   if (tool === 'mosaic') {
+    if (!mosaicFull) return;
     mosaicDraft = { x: p.x, y: p.y };
+    draft = cloneMosaic();
+    draft.set({ selectable: false, evented: false });
+    fc.add(draft);
+    setMosaicBox(draft, p.x, p.y, 0, 0);
     return;
   }
-  if (['rect', 'ellipse', 'line', 'arrow'].includes(tool)) {
+  if (['rect', 'ellipse', 'line', 'arrow', 'highlighter'].includes(tool)) {
     drawStart = { x: p.x, y: p.y };
     draft = createShape(tool, p.x, p.y, p.x, p.y);
     if (draft) { draft.set({ selectable: false, evented: false }); fc.add(draft); }
@@ -450,22 +507,33 @@ function onFcDown(opt) {
 }
 
 function onFcMove(opt) {
-  if (!fc) return;
+  if (!fc || fc.isDrawingMode || !draft) return;
   const p = fc.getPointer(opt.e);
-  if (tool === 'mosaic' && mosaicDraft) return; // 马赛克在 up 时生成
-  if (draft && drawStart) {
+  if (tool === 'mosaic' && mosaicDraft) {
+    setMosaicBox(draft, Math.min(mosaicDraft.x, p.x), Math.min(mosaicDraft.y, p.y), Math.abs(p.x - mosaicDraft.x), Math.abs(p.y - mosaicDraft.y));
+    fc.requestRenderAll();
+    return;
+  }
+  if (drawStart) {
     updateShape(draft, tool, drawStart.x, drawStart.y, p.x, p.y);
     fc.requestRenderAll();
   }
 }
 
 function onFcUp(opt) {
-  if (!fc) return;
+  if (!fc || fc.isDrawingMode) return;
   const p = fc.getPointer(opt.e);
-  if (tool === 'mosaic' && mosaicDraft) {
-    const a = mosaicDraft, b = p;
+  if (tool === 'mosaic' && draft) {
+    const start = mosaicDraft;
     mosaicDraft = null;
-    addMosaic(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    const w = Math.abs(p.x - start.x), h = Math.abs(p.y - start.y);
+    if (w < 4 || h < 4) fc.remove(draft);
+    else {
+      setMosaicBox(draft, Math.min(start.x, p.x), Math.min(start.y, p.y), w, h);
+      draft.set({ selectable: true, evented: true });
+      commit();
+    }
+    draft = null;
     return;
   }
   if (draft && drawStart) {
@@ -473,7 +541,7 @@ function onFcUp(opt) {
     if (w < 4 && h < 4) {
       fc.remove(draft); // 太小，丢弃
     } else {
-      draft.set({ selectable: tool === 'select', evented: tool === 'select' });
+      draft.set({ selectable: true, evented: true });
       commit();
     }
     draft = null;
@@ -482,16 +550,30 @@ function onFcUp(opt) {
 }
 
 function createShape(kind, x1, y1, x2, y2) {
+  const hl = Math.max(10, strokeWidth * 3);
   const common = { fill: 'transparent', stroke: color, strokeWidth, strokeUniform: true };
   if (kind === 'rect') return new fabric.Rect({ ...common, left: x1, top: y1, width: 0, height: 0 });
+  if (kind === 'highlighter') return new fabric.Rect({ left: x1, top: y1, width: 0, height: 0, fill: hexToRgba(color, 0.35), stroke: 'transparent' });
   if (kind === 'ellipse') return new fabric.Ellipse({ ...common, left: x1, top: y1, rx: 0, ry: 0 });
   if (kind === 'line') return new fabric.Line([x1, y1, x2, y2], { ...common, fill: '', strokeLineCap: 'round' });
-  if (kind === 'arrow') return new fabric.Path(arrowPath(x1, y1, x2, y2), { ...common, fill: '', strokeLineCap: 'round', strokeLineJoin: 'round' });
+  if (kind === 'arrow') {
+    // 用两条 Line 组合，不用 fabric.Path：路径归一化会把超长箭头的包围盒算错导致整条不显示
+    const a = Math.atan2(y2 - y1, x2 - x1);
+    const o = { ...common, fill: '', strokeLineCap: 'round', strokeLineJoin: 'round' };
+    return new fabric.Group(
+      [
+        new fabric.Line([x1, y1, x2, y2], o),
+        new fabric.Line([x2, y2, x2 - hl * Math.cos(a - 0.42), y2 - hl * Math.sin(a - 0.42)], o),
+        new fabric.Line([x2, y2, x2 - hl * Math.cos(a + 0.42), y2 - hl * Math.sin(a + 0.42)], o),
+      ],
+      { originX: 'center', originY: 'center' }
+    );
+  }
   return null;
 }
 
 function updateShape(obj, kind, x1, y1, x2, y2) {
-  if (kind === 'rect') {
+  if (kind === 'rect' || kind === 'highlighter') {
     obj.set({ left: Math.min(x1, x2), top: Math.min(y1, y2), width: Math.abs(x2 - x1), height: Math.abs(y2 - y1) });
   } else if (kind === 'ellipse') {
     obj.set({ left: Math.min(x1, x2), top: Math.min(y1, y2), rx: Math.abs(x2 - x1) / 2, ry: Math.abs(y2 - y1) / 2 });
@@ -499,54 +581,90 @@ function updateShape(obj, kind, x1, y1, x2, y2) {
     obj.set({ x1, y1, x2, y2 });
     obj.setCoords();
   } else if (kind === 'arrow') {
-    obj.set({ path: parsePath(arrowPath(x1, y1, x2, y2)) });
-    obj.setCoords();
+    // Group 的包围盒只在创建时算，拖拽时直接重建（Path 归一化对长箭头会算错，故不用 Path）
+    const next = createShape('arrow', x1, y1, x2, y2);
+    if (!next) return;
+    fc.remove(obj);
+    fc.add(next);
+    draft = next;
   }
 }
 
-function arrowPath(x1, y1, x2, y2) {
-  const a = Math.atan2(y2 - y1, x2 - x1);
-  const hl = Math.max(12, strokeWidth * 3.5);
-  const a1 = a + Math.PI - 0.42, a2 = a + Math.PI + 0.42;
-  return (
-    `M ${x1} ${y1} L ${x2} ${y2} ` +
-    `M ${x2} ${y2} L ${x2 + hl * Math.cos(a1)} ${y2 + hl * Math.sin(a1)} ` +
-    `M ${x2} ${y2} L ${x2 + hl * Math.cos(a2)} ${y2 + hl * Math.sin(a2)}`
-  );
+/* ---------- 文字标注 ---------- */
+function placeholderText() {
+  return window.i18n.t('overlay.textPh');
 }
-// fabric.Path 的 path 数组解析（用于更新箭头端点）
-function parsePath(d) {
-  return d.trim().split(/\s+(?=[ML])/).map((seg) => {
-    const parts = seg.trim().split(/\s+/);
-    return [parts[0], ...parts.slice(1).map(Number)];
+
+function addText(x, y) {
+  if (!fc) return;
+  const t = new fabric.IText(placeholderText(), {
+    left: x,
+    top: y,
+    fontFamily: '"Microsoft YaHei", "Segoe UI", sans-serif',
+    fontSize: Math.max(14, Math.round(strokeWidth * 5)),
+    fill: color,
+    editable: true,
+    originX: 'left',
+    originY: 'top',
+  });
+  fc.add(t);
+  fc.setActiveObject(t);
+  t.enterEditing();
+  t.selectAll();
+  fc.requestRenderAll();
+}
+
+/* ---------- 马赛克：整幅像素化底图 + 裁剪显示，拖拽过程实时跟随 ---------- */
+function buildMosaicFull() {
+  if (!fc) return;
+  const vw = Math.max(1, Math.round(rect.w * ratio));
+  const vh = Math.max(1, Math.round(rect.h * ratio));
+  const block = Math.max(6, Math.round(10 * ratio));
+  const small = document.createElement('canvas');
+  small.width = Math.max(1, Math.round(vw / block));
+  small.height = Math.max(1, Math.round(vh / block));
+  small.getContext('2d').drawImage(bg, rect.x * ratio, rect.y * ratio, vw, vh, 0, 0, small.width, small.height);
+  const big = document.createElement('canvas');
+  big.width = vw;
+  big.height = vh;
+  const bctx = big.getContext('2d');
+  bctx.imageSmoothingEnabled = false;
+  bctx.drawImage(small, 0, 0, vw, vh);
+  mosaicFull = new fabric.Image(big, {
+    left: rect.w / 2,
+    top: rect.h / 2,
+    originX: 'center',
+    originY: 'center',
+    selectable: false,
+    evented: false,
+    hoverCursor: 'default',
   });
 }
 
-// 马赛克：取底图对应区域做像素化，铺回选区
-function addMosaic(cx, cy, cw, ch) {
-  if (cw < 4 || ch < 4) return;
-  const sx = (rect.x + cx) * ratio;
-  const sy = (rect.y + cy) * ratio;
-  const sw = cw * ratio;
-  const sh = ch * ratio;
-  const block = Math.max(6, Math.round(10 * ratio));
-  const small = document.createElement('canvas');
-  small.width = Math.max(1, Math.round(sw / block));
-  small.height = Math.max(1, Math.round(sh / block));
-  const sctx = small.getContext('2d');
-  sctx.drawImage(bg, sx, sy, sw, sh, 0, 0, small.width, small.height);
-  const big = document.createElement('canvas');
-  big.width = Math.max(1, Math.round(sw));
-  big.height = Math.max(1, Math.round(sh));
-  const bctx = big.getContext('2d');
-  bctx.imageSmoothingEnabled = false;
-  bctx.drawImage(small, 0, 0, big.width, big.height);
-  fabric.Image.fromURL(big.toDataURL('image/png'), (img) => {
-    img.set({ left: cx, top: cy, selectable: tool === 'select', evented: tool === 'select', hoverCursor: 'default' });
-    fc.add(img);
-    fc.requestRenderAll();
-    commit();
+function cloneMosaic() {
+  return new fabric.Image(mosaicFull.getElement(), {
+    left: rect.w / 2,
+    top: rect.h / 2,
+    originX: 'center',
+    originY: 'center',
+    scaleX: mosaicFull.scaleX,
+    scaleY: mosaicFull.scaleY,
+    hoverCursor: 'default',
   });
+}
+
+// 把像素化底图裁剪到给定选区局部矩形（CSS 坐标）
+function setMosaicBox(img, x, y, w, h) {
+  const sc = mosaicFull.scaleX || 1;
+  img.set({
+    left: x + w / 2,
+    top: y + h / 2,
+    width: Math.max(1, Math.round((w * ratio) / sc)),
+    height: Math.max(1, Math.round((h * ratio) / sc)),
+    cropX: (x * ratio) / sc,
+    cropY: (y * ratio) / sc,
+  });
+  img.setCoords();
 }
 
 /* ---------- 历史（撤销/重做） ---------- */
@@ -562,7 +680,7 @@ function restore(snap) {
   if (!fc) return;
   fc.loadFromJSON(snap, () => {
     fc.getObjects().forEach((o) => {
-      o.set({ selectable: tool === 'select', evented: tool === 'select' });
+      o.set({ selectable: true, evented: true });
     });
     fc.renderAll();
     scheduleUpdate();

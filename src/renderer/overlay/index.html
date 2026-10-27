@@ -27,12 +27,16 @@
     #sel.confirm { border: 1.5px solid #3b82f6; pointer-events: none; }
     /* 标注画布容器（Fabric 生成），定位到选区 */
     #annWrap { position: absolute; display: none; z-index: 4; }
-    /* 选区调整：8 个缩放手柄 + 4 条边移动带 */
+    /* 选区调整：8 个缩放手柄 + 4 条边移动带。
+       视觉点很小（7px）但热区用 ::after 撑到 24px，避免「看得见点不着」。 */
     #adj { position: absolute; inset: 0; display: none; z-index: 7; pointer-events: none; }
     #adj .handle {
-      position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px;
-      background: #fff; border: 1.5px solid #3b82f6; border-radius: 2px;
+      position: absolute; width: 7px; height: 7px; margin: -4px 0 0 -4px;
+      background: #fff; border: 1px solid #3b82f6; border-radius: 2px;
       pointer-events: auto; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+    #adj .handle::after {
+      content: ''; position: absolute; left: -9px; top: -9px; right: -9px; bottom: -9px;
     }
     #adj .handle[data-cur=nw], #adj .handle[data-cur=se] { cursor: nwse-resize; }
     #adj .handle[data-cur=ne], #adj .handle[data-cur=sw] { cursor: nesw-resize; }
@@ -40,10 +44,8 @@
     #adj .handle[data-cur=e], #adj .handle[data-cur=w] { cursor: ew-resize; }
     #adj .band { position: absolute; pointer-events: auto; }
     #adj .band[data-cur=move] { cursor: move; }
-    #adj .band.n, #adj .band.s { height: 7px; left: 9px; right: 9px; }
-    #adj .band.w, #adj .band.e { width: 7px; top: 9px; bottom: 9px; }
-    #adj .band.n { cursor: move; } #adj .band.s { cursor: move; }
-    #adj .band.w { cursor: move; } #adj .band.e { cursor: move; }
+    #adj .band.n, #adj .band.s { left: 12px; right: 12px; }
+    #adj .band.w, #adj .band.e { top: 12px; bottom: 12px; }
     #size {
       position: absolute;
       display: none;
