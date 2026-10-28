@@ -45,6 +45,10 @@
     data() {
       return {
         tools: TOOLS,
+        // 左侧拖拽手柄：2 列 × 3 行圆点
+        gripIcon: '<svg viewBox="0 0 12 18" xmlns="http://www.w3.org/2000/svg">' +
+          [3.6, 9, 14.4].map((cy) => [3.6, 8.4].map((cx) => '<circle cx="' + cx + '" cy="' + cy + '" r="1.7"/>').join('')).join('') +
+          '</svg>',
         icons: ICONS,
         colors: ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#af52de', '#000000', '#ffffff'],
         widths: [2, 4, 7],
@@ -107,6 +111,19 @@
           size: st ? st.size : null,
         });
         this.$nextTick(() => this.reportSize());
+      },
+      // 拖动工具条：用屏幕坐标增量移动窗口（主进程 setBounds）
+      startDrag(e) {
+        if (e.button !== 0) return;
+        bridge.invoke('toolbar:drag-start', { x: e.screenX, y: e.screenY });
+        const onMove = (ev) => bridge.invoke('toolbar:drag-move', { x: ev.screenX, y: ev.screenY });
+        const onUp = () => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          bridge.invoke('toolbar:drag-end');
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
       },
       pickColor(c) {
         this.currentStyle.color = c;

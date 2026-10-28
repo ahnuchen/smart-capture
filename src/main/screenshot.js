@@ -359,6 +359,32 @@ class ScreenshotManager {
     this.syncToolbarRectToOverlay(); // 让覆盖窗知道工具条位置，用于鼠标穿透
   }
 
+  // ---- 工具条拖动（左侧手柄） ----
+  startToolbarDrag({ x, y }) {
+    const win = this.toolbar;
+    if (!win || win.isDestroyed()) return { ok: false };
+    this._toolbarDrag = { px: x, py: y, bounds: win.getBounds() };
+    return { ok: true };
+  }
+
+  moveToolbarDrag({ x, y }) {
+    const d = this._toolbarDrag;
+    const win = this.toolbar;
+    if (!d || !win || win.isDestroyed()) return { ok: false };
+    const nx = Math.round(d.bounds.x + (x - d.px));
+    const ny = Math.round(d.bounds.y + (y - d.py));
+    win.setBounds({ x: nx, y: ny, width: d.bounds.width, height: d.bounds.height });
+    // 记住新位置：之后样式行显隐引起的尺寸变化不再把工具条弹回选区旁
+    if (this._toolbarAnchor) this._toolbarAnchor = { ...this._toolbarAnchor, x: nx, y: ny };
+    this.syncToolbarRectToOverlay();
+    return { ok: true };
+  }
+
+  endToolbarDrag() {
+    this._toolbarDrag = null;
+    return { ok: true };
+  }
+
   closeToolbar() {
     // 关工具条前把覆盖窗的鼠标穿透还原，否则整块屏幕仍然点不动
     this.clearToolbarPassthrough();

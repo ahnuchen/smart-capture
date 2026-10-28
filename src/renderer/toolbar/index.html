@@ -53,12 +53,21 @@
     #bar {
       position: relative;
       display: inline-block;
-      padding: 7px 8px;
+      padding: 7px 8px 7px 24px;
       border-radius: 10px;
       background: var(--tb-bg);
       border: 1px solid var(--tb-border);
       box-shadow: var(--tb-shadow);
     }
+    /* 左侧拖拽手柄：整条高度，悬浮变移动光标 */
+    #grip {
+      position: absolute; left: 4px; top: 6px; bottom: 6px; width: 14px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px; color: var(--tb-muted); cursor: move; flex: none;
+    }
+    #grip:hover { background: var(--tb-hover); color: var(--tb-text); }
+    #grip:active { background: var(--tb-active); }
+    #grip svg { width: 10px; height: 16px; fill: currentColor; display: block; }
     .row { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
     button {
       display: inline-flex;
@@ -114,6 +123,7 @@
 
   <script type="text/x-template" id="tpl-toolbar">
     <div id="bar">
+      <div id="grip" :title="$t('tb.drag')" @mousedown.prevent="startDrag"><span v-html="gripIcon"></span></div>
       <div class="row" id="rowMain">
         <button
           v-for="tool in tools" :key="tool.id"

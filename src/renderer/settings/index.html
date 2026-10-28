@@ -328,7 +328,7 @@
             </div>
 
             <div class="card" id="agentEditor" v-show="agentEditor.open" ref="agentEditorCard">
-              <h3>{{ agentEditor.id ? $t('ag.editTitle', agentEditor.name) : $t('ag.newTitle') }}</h3>
+              <h3>{{ agentEditor.id ? $t('ag.editTitle', agentEditor.name || agentEditor.icon) : $t('ag.newTitle') }}</h3>
               <div class="row2">
                 <div class="field"><label>{{ $t('ag.icon') }}</label><input type="text" id="aeIcon" maxlength="4" v-model="agentEditor.icon" :placeholder="$t('ag.iconPh')" /></div>
                 <div class="field"><label>{{ $t('ag.name') }}</label><input type="text" id="aeName" ref="aeName" v-model="agentEditor.name" :placeholder="$t('ag.namePh')" /></div>
@@ -361,7 +361,7 @@
               <div class="field">
                 <label>{{ $t('cap.defaultLabel') }}</label>
                 <select id="defaultAgent" v-model="settings.defaultAgentId" @change="markDirty">
-                  <option v-for="a in settings.agents" :key="a.id" :value="a.id">{{ (a.icon || '🤖') + ' ' + agentDisplayName(a) }}</option>
+                  <option v-for="a in settings.agents" :key="a.id" :value="a.id">{{ agentLabel(a) }}</option>
                 </select>
               </div>
               <div class="field">

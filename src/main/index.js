@@ -145,6 +145,10 @@ function setupIpc() {
   ipcMain.handle('shot:copy-finish', () => screenshot.handleCopyFinish());
   // 覆盖窗在工具条矩形内让鼠标穿透，避免全屏覆盖窗吞掉工具条点击
   ipcMain.handle('overlay:passthrough', (e, { on }) => screenshot.setOverlayPassthrough(e.sender, on));
+  // 工具条左侧拖拽手柄
+  ipcMain.handle('toolbar:drag-start', (_e, p) => screenshot.startToolbarDrag(p));
+  ipcMain.handle('toolbar:drag-move', (_e, p) => screenshot.moveToolbarDrag(p));
+  ipcMain.handle('toolbar:drag-end', () => screenshot.endToolbarDrag());
 
   // 工具条
   ipcMain.handle('toolbar:size', (_e, payload) => screenshot.layoutToolbar(payload));

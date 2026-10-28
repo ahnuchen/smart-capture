@@ -122,6 +122,9 @@
       agentDisplayName(a) {
         return AgentsShared.agentName(a, this.$lang);
       },
+      agentLabel(a) {
+        return [a.icon, this.agentDisplayName(a)].filter(Boolean).join(' ') || a.id;
+      },
       agentDisplayPrompt(a) {
         return AgentsShared.agentPrompt(a, this.$lang);
       },
@@ -328,7 +331,7 @@
         this.markDirty();
       },
       async deleteAgent(a) {
-        if (!(await this.dlgConfirm(this.$t('ag.delConfirm', this.agentDisplayName(a))))) return;
+        if (!(await this.dlgConfirm(this.$t('ag.delConfirm', this.agentLabel(a))))) return;
         this.settings.agents = this.settings.agents.filter((x) => x.id !== a.id);
         if (this.settings.defaultAgentId === a.id) this.settings.defaultAgentId = 'translate';
         this.markDirty();
@@ -350,18 +353,20 @@
       },
       saveAgent() {
         const ae = this.agentEditor;
-        const icon = ae.icon.trim() || '🤖';
+        const icon = ae.icon.trim();
         const name = ae.name.trim();
         const prompt = ae.prompt.trim();
-        if (!name) return this.dlgAlert(this.$t('ag.alertName'));
+        // 图标和名称只需其一：只填名称时补默认图标，只填图标时名称留空
+        if (!icon && !name) return this.dlgAlert(this.$t('ag.alertIconOrName'));
         if (!prompt) return this.dlgAlert(this.$t('ag.alertPrompt'));
+        const iconOut = icon || '🤖';
         const model = ae.model || undefined;
         const idx = this.settings.agents.findIndex((x) => x.id === ae.id);
         if (idx >= 0) {
           // 整体替换而不是原位改：model 字段可能原本不存在，保证响应式
-          this.settings.agents.splice(idx, 1, { ...this.settings.agents[idx], icon, name, systemPrompt: prompt, model });
+          this.settings.agents.splice(idx, 1, { ...this.settings.agents[idx], icon: iconOut, name, systemPrompt: prompt, model });
         } else {
-          this.settings.agents.push({ id: 'agent_' + Date.now(), icon, name, systemPrompt: prompt, model, enabled: true });
+          this.settings.agents.push({ id: 'agent_' + Date.now(), icon: iconOut, name, systemPrompt: prompt, model, enabled: true });
         }
         ae.open = false;
         this.markDirty();
@@ -369,7 +374,7 @@
       async deleteEditingAgent() {
         const ae = this.agentEditor;
         const target = this.settings.agents.find((x) => x.id === ae.id);
-        if (!(await this.dlgConfirm(this.$t('ag.delConfirm', target ? this.agentDisplayName(target) : ae.id)))) return;
+        if (!(await this.dlgConfirm(this.$t('ag.delConfirm', target ? this.agentLabel(target) : ae.id)))) return;
         this.settings.agents = this.settings.agents.filter((x) => x.id !== ae.id);
         if (this.settings.defaultAgentId === ae.id) this.settings.defaultAgentId = 'translate';
         ae.open = false;
