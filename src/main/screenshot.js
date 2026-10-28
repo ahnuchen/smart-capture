@@ -22,9 +22,12 @@ function attachConsoleTag(win, tag) {
   });
 }
 
-// 覆盖窗/工具条是隐形的透明窗，出问题时只能靠 devtools 看渲染层
+// 覆盖窗/工具条是隐形的透明窗，出问题时才需要 devtools。
+// 注意：必须显式 --devtools 才开 —— 分离式 devtools 窗口会改变置顶顺序，
+// 把覆盖窗顶到工具条上面，导致工具条点击全部被吞（已实测复现）。
+const DEVTOOLS = !!process.argv.find((a) => a === '--devtools');
 function attachDevtools(win, tag) {
-  if (!DEBUG) return;
+  if (!DEVTOOLS) return;
   win.webContents.once('did-finish-load', () => {
     setTimeout(() => {
       if (!win.isDestroyed()) win.webContents.openDevTools({ mode: 'detach' });
@@ -184,11 +187,12 @@ class ScreenshotManager {
   // ---- 来自覆盖窗渲染进程的事件 ----
   handleSelection({ displayId, rect, fullPng, apiImg }) {
     console.log('[screenshot] selection:', JSON.stringify({ displayId, rect, fullLen: fullPng && fullPng.length, apiLen: apiImg && apiImg.length }));
-    if (!this.active || this.selection) {
-      // 已有选区时再次拖拽 = 重新选区
-      if (this.selection) this.handleReselect();
-      else return;
+    if (!this.active) return;
+    // 同一显示器重复上报 = 会话仍在，按增量更新处理，绝不能当成"重新选区"把会话拆掉
+    if (this.selection && this.selection.displayId === displayId) {
+      return this.handleSelectionUpdate({ rect, fullPng, apiImg });
     }
+    if (this.selection) this.handleReselect(); // 在另一块屏上拖拽 = 真的重新选区
     const entry = this.overlays.find((o) => o.display.id === displayId);
     if (!entry) return;
     const b = entry.display.bounds;
@@ -217,6 +221,8 @@ class ScreenshotManager {
   handleReselect() {
     this.closeToolbar();
     this.selection = null;
+    // 不论 ESC 是从覆盖窗还是工具条发出的，都让覆盖窗回到可重新框选的状态
+    this.broadcastOverlay('overlay:reset');
   }
 
   // 选区/标注变化：仅更新图片与位置，不重开工具条、不触发自动分析
@@ -235,6 +241,7 @@ class ScreenshotManager {
 
   sendToActiveOverlay(payload) {
     const o = this.activeOverlay;
+    if (DEBUG) console.log('[screenshot] -> overlay:', payload.type, 'found=', !!o, 'overlays=', this.overlays.length);
     if (o && !o.win.isDestroyed()) o.win.webContents.send('overlay:tool', payload);
   }
 
@@ -278,6 +285,7 @@ class ScreenshotManager {
     attachConsoleTag(win, 'toolbar');
     attachDevtools(win, 'toolbar');
     this._lastToolbarSize = null; // 新一轮工具条，等待渲染层上报尺寸
+    this._toolbarAnchor = null; // 新工具条重新计算摆放位置
     this.toolbar = win;
     win.loadFile(path.join(__dirname, '../renderer/toolbar/index.html'));
     win.webContents.once('did-finish-load', () => {
@@ -308,22 +316,94 @@ class ScreenshotManager {
     const entry = this.overlays.find((o) => o.display.id === this.selection.displayId);
     const wa = entry ? entry.display.workArea : screen.getPrimaryDisplay().workArea;
     const sel = this.selection.rect;
-    let x = sel.x + sel.w - w;
-    x = Math.min(Math.max(x, wa.x + 8), wa.x + wa.width - w - 8);
-    let y = sel.y + sel.h + 10;
-    if (y + h > wa.y + wa.height) y = sel.y - h - 10;
-    if (y < wa.y) y = Math.min(sel.y + sel.h + 10, wa.y + wa.height - h);
-    win.setBounds({ x: Math.round(x), y: Math.round(y), width: Math.ceil(w), height: Math.ceil(h) });
-    win.showInactive();
+    const INSET = 8, GAP = 10;
+    const rectKey = `${sel.x},${sel.y},${sel.w},${sel.h}`;
+    // 位置锚点只在选区变化时重算：工具栏自身长高/变矮（展开颜色面板等）只改尺寸，绝不挪位
+    let anchor = this._toolbarAnchor;
+    if (!anchor || anchor.rectKey !== rectKey) {
+      const below = sel.y + sel.h + GAP;
+      const above = sel.y - h - GAP;
+      let x, y;
+      if (below + h <= wa.y + wa.height - INSET) {
+        x = sel.x + sel.w - w; y = below; // 优先选区外侧下方
+      } else if (above >= wa.y + INSET) {
+        x = sel.x + sel.w - w; y = above; // 其次外侧上方
+      } else if (sel.w >= w + INSET * 2 && sel.h >= h + INSET * 2) {
+        x = sel.x + sel.w - w - INSET; y = sel.y + sel.h - h - INSET; // 外侧放不下才进选区内部
+      } else {
+        x = sel.x + sel.w - w; y = Math.min(below, wa.y + wa.height - h - INSET);
+      }
+      x = Math.min(Math.max(x, wa.x + INSET), wa.x + wa.width - w - INSET);
+      y = Math.min(Math.max(y, wa.y + INSET), wa.y + wa.height - h - INSET);
+      anchor = { rectKey, x: Math.round(x), y: Math.round(y) };
+      this._toolbarAnchor = anchor;
+    }
+    const x = Math.round(anchor.x);
+    // 尺寸变大时只在必要时上移，保证不超出工作区；横向保持锚点
+    const y = Math.round(Math.min(anchor.y, wa.y + wa.height - h - INSET));
+    const next = { x, y, width: Math.ceil(w), height: Math.ceil(h) };
+    const cur = win.getBounds();
+    const moved = cur.x !== next.x || cur.y !== next.y;
+    if (moved || cur.width !== next.width || cur.height !== next.height) {
+      win.setBounds(next);
+    }
+    // 只在首次显示或位置变化时重申置顶/重排，纯尺寸变化（切换工具导致样式行显隐）不再打扰窗口
+    if (!win.isVisible()) {
+      win.setAlwaysOnTop(false);
+      win.setAlwaysOnTop(true, 'screen-saver');
+      win.showInactive();
+      win.moveTop();
+    } else if (moved) {
+      win.moveTop();
+    }
+    this.syncToolbarRectToOverlay(); // 让覆盖窗知道工具条位置，用于鼠标穿透
   }
 
   closeToolbar() {
+    // 关工具条前把覆盖窗的鼠标穿透还原，否则整块屏幕仍然点不动
+    this.clearToolbarPassthrough();
     if (this.toolbar && !this.toolbar.isDestroyed()) this.toolbar.close();
     this.toolbar = null;
   }
 
+  // 把工具条矩形（覆盖窗本地坐标）告诉覆盖窗；null 表示工具条已关闭
+  syncToolbarRectToOverlay() {
+    const o = this.activeOverlay;
+    if (!o || o.win.isDestroyed()) return;
+    const win = this.toolbar;
+    if (!win || win.isDestroyed() || !this.selection) {
+      o.win.webContents.send('overlay:toolbar-rect', null);
+      return;
+    }
+    const b = win.getBounds();
+    const d = o.display.bounds;
+    o.win.webContents.send('overlay:toolbar-rect', { x: b.x - d.x, y: b.y - d.y, w: b.width, h: b.height });
+  }
+
+  clearToolbarPassthrough() {
+    for (const o of this.overlays) {
+      if (o.win.isDestroyed()) continue;
+      o.win.webContents.send('overlay:toolbar-rect', null);
+      try { o.win.setIgnoreMouseEvents(false); } catch (_) { /* 忽略 */ }
+    }
+  }
+
+  // 覆盖窗在工具条矩形范围内临时让鼠标穿透，保证工具条一定能点到
+  setOverlayPassthrough(sender, on) {
+    const o = this.overlays.find((x) => x.win.webContents === sender);
+    if (!o || o.win.isDestroyed()) return;
+    try { o.win.setIgnoreMouseEvents(!!on, { forward: true }); } catch (_) { /* 忽略 */ }
+    if (on && this.toolbar && !this.toolbar.isDestroyed()) {
+      // 同时把工具条顶到最上面，点击落到它身上
+      this.toolbar.setAlwaysOnTop(true, 'screen-saver');
+      this.toolbar.moveTop();
+    }
+    if (DEBUG) console.log('[screenshot] overlay passthrough:', !!on);
+  }
+
   // ---- 工具条动作 ----
   async handleToolbarAction({ type, agentId, ...rest }) {
+    if (DEBUG) console.log('[screenshot] toolbar action:', JSON.stringify({ type, agentId, ...rest }));
     switch (type) {
       // 标注指令：转发给覆盖窗，保持截图会话不结束
       case 'tool':

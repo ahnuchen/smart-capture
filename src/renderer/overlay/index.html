@@ -27,6 +27,8 @@
     #sel.confirm { border: 1.5px solid #3b82f6; pointer-events: none; }
     /* 标注画布容器（Fabric 生成），定位到选区 */
     #annWrap { position: absolute; display: none; z-index: 4; }
+    /* Vue 只管外围 UI；不设 z-index/transform，避免形成层叠上下文盖住画布 */
+    #overlay-ui { position: absolute; inset: 0; pointer-events: none; }
     /* 选区调整：8 个缩放手柄 + 4 条边移动带。
        视觉点很小（7px）但热区用 ::after 撑到 24px，避免「看得见点不着」。 */
     #adj { position: absolute; inset: 0; display: none; z-index: 7; pointer-events: none; }
@@ -44,8 +46,6 @@
     #adj .handle[data-cur=e], #adj .handle[data-cur=w] { cursor: ew-resize; }
     #adj .band { position: absolute; pointer-events: auto; }
     #adj .band[data-cur=move] { cursor: move; }
-    #adj .band.n, #adj .band.s { left: 12px; right: 12px; }
-    #adj .band.w, #adj .band.e { top: 12px; bottom: 12px; }
     #size {
       position: absolute;
       display: none;
@@ -70,6 +70,8 @@
     }
     #tip b { color: #93c5fd; font-weight: 600; }
     body.selecting #dim { display: none; }
+    /* 指针移到工具条上时本窗交出光标，避免十字线与工具条光标互相抢占导致闪烁 */
+    body.over-toolbar, body.over-toolbar * { cursor: default !important; }
 
     /* 十字辅助线 */
     #crossV, #crossH { position: absolute; display: none; pointer-events: none; background: rgba(255, 255, 255, 0.35); z-index: 5; }
@@ -102,21 +104,45 @@
   <img id="bg" draggable="false" />
   <div id="dim"></div>
   <div id="sel"></div>
+  <!-- Fabric 拥有这个子树，必须留在 Vue 根之外 -->
   <div id="annWrap"><canvas id="ann"></canvas></div>
-  <div id="adj"></div>
-  <div id="size"></div>
-  <div id="tip"><b>Enter / 双击 / ✔完成</b> 复制并完成 · <b>ESC</b> 重新选区</div>
-  <div id="crossV"></div>
-  <div id="crossH"></div>
-  <div id="picker">
-    <canvas id="pickMag"></canvas>
-    <div id="pickRow"><span id="pickSwatch"></span><span id="pickText"></span></div>
-    <div id="pickPos"></div>
-    <div id="pickFmt">Shift 切换 HEX / RGB / HSL</div>
-  </div>
+
+  <div id="app"></div>
+
+  <script type="text/x-template" id="tpl-overlay">
+    <div id="overlay-ui">
+      <div id="size" :style="sizeStyle">{{ size.text }}</div>
+      <div id="tip" :style="tipStyle" v-html="$t('overlay.tip')"></div>
+      <div id="crossV" :style="crossVStyle"></div>
+      <div id="crossH" :style="crossHStyle"></div>
+      <div id="adj" :style="{ display: adjVisible ? 'block' : 'none' }">
+        <div
+          v-for="b in bands" :key="'band-' + b.side"
+          class="band" :class="b.side" data-cur="move"
+          :style="{ left: b.left + 'px', top: b.top + 'px', width: b.width + 'px', height: b.height + 'px' }"
+          @mousedown.prevent="adjustStart('move', $event)"
+        ></div>
+        <div
+          v-for="h in handles" :key="'handle-' + h.cur"
+          class="handle" :data-cur="h.cur"
+          :style="{ left: h.x + 'px', top: h.y + 'px' }"
+          @mousedown.prevent="adjustStart(h.cur, $event)"
+        ></div>
+      </div>
+      <div id="picker" :style="pickerStyle">
+        <canvas id="pickMag"></canvas>
+        <div id="pickRow"><span id="pickSwatch" :style="{ background: picker.color }"></span><span id="pickText">{{ picker.text }}</span></div>
+        <div id="pickPos">{{ picker.pos }}</div>
+        <div id="pickFmt">{{ $t('overlay.pickFmt') }}</div>
+      </div>
+    </div>
+  </script>
+
   <script src="../../../node_modules/fabric/dist/fabric.min.js"></script>
-  <script src="../../shared/i18n-dom.js"></script>
-  <script>applyI18n();</script>
+  <script src="../../../node_modules/vue/dist/vue.min.js"></script>
+  <script src="../shared/vue-i18n.js"></script>
+  <script src="fabric-controller.js"></script>
+  <script src="overlay-app.js"></script>
   <script src="overlay.js"></script>
 </body>
 </html>

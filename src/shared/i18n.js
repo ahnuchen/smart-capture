@@ -390,4 +390,10 @@ function t(key, ...args) {
   return s;
 }
 
-module.exports = { setLang, getLang, t };
+// 一次性给渲染层整套词典：Vue 模板里逐条 sendSync 太慢，启动时取一次即可
+function getDict(lang) {
+  const l = dict[lang] ? lang : 'zh';
+  return Object.assign({}, dict.zh, dict[l]);
+}
+
+module.exports = { setLang, getLang, t, getDict };

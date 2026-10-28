@@ -8,6 +8,7 @@ const INVOKABLE = new Set([
   'shot:reselect',
   'shot:canceled',
   'shot:copy-finish',
+  'overlay:passthrough',
   'toolbar:size',
   'toolbar:action',
   'result:ready',
@@ -30,6 +31,8 @@ const LISTENABLE = new Set([
   'overlay:enter',
   'overlay:selftest',
   'overlay:tool',
+  'overlay:reset',
+  'overlay:toolbar-rect',
   'toolbar:init',
   'toolbar:feedback',
   'result:init',
@@ -63,6 +66,14 @@ contextBridge.exposeInMainWorld('i18n', {
       return ipcRenderer.sendSync('i18n:t', { key, args });
     } catch (_) {
       return key;
+    }
+  },
+  // 整套词典：Vue 窗口启动时取一次，模板渲染不再逐条走同步 IPC
+  dict: () => {
+    try {
+      return ipcRenderer.sendSync('i18n:dict');
+    } catch (_) {
+      return { lang: 'zh', dict: {} };
     }
   },
 });

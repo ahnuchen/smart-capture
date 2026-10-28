@@ -90,21 +90,72 @@
     button.exit:hover { background: var(--tb-exit-hover); color: var(--tb-exit-text); }
     .sep { width: 1px; height: 20px; background: var(--tb-sep); margin: 0 4px; flex: none; }
     .hint { color: var(--tb-muted); font-size: 11px; padding: 2px 6px 0; }
-    /* 颜色/线宽条：必须在窗口内，绝对定位到窗口外会点不到（点击落到桌面上） */
-    #styleRow { display: none; margin-top: 6px; gap: 9px; }
-    #styleRow.show { display: flex; }
+    /* 样式行常驻、条目数固定：窗口尺寸恒定，工具栏不会因选工具/改样式而挪位 */
+    #styleRow { display: flex; align-items: center; gap: 9px; margin-top: 6px; min-height: 23px; }
     .swatch { width: 19px; height: 19px; border-radius: 5px; border: 1px solid var(--tb-border); cursor: pointer; flex: none; }
     .swatch.active { border: 2px solid var(--tb-active-ring); }
     .wdot { background: var(--tb-dot); border-radius: 50%; cursor: pointer; flex: none; }
     .wdot.active { box-shadow: 0 0 0 2px var(--tb-active-ring); }
+    .pgroup { display: flex; align-items: center; gap: 7px; }
+    #styleRow .sep { margin: 0 2px; }
+    #styleRow .hint { font-size: 11px; }
   </style>
 </head>
 <body>
-  <div id="bar">
-    <div class="row" id="rowMain"></div>
-    <div class="row" id="styleRow"></div>
-    <div class="row" id="rowAgents"></div>
-  </div>
+  <div id="app"></div>
+
+  <script type="text/x-template" id="tpl-toolbar">
+    <div id="bar">
+      <div class="row" id="rowMain">
+        <button
+          v-for="tool in tools" :key="tool.id"
+          class="tool" :class="{ active: activeTool === tool.id }"
+          :title="$t(tool.key)" @click="toggleTool(tool.id)"
+        ><span class="ico" v-html="tool.icon"></span></button>
+        <div class="sep"></div>
+        <button class="tool" :title="$t('tb.undo')" @click="act({ type: 'undo' })"><span class="ico" v-html="icons.undo"></span></button>
+        <button class="tool" :title="$t('tb.redo')" @click="act({ type: 'redo' })"><span class="ico" v-html="icons.redo"></span></button>
+        <button class="tool" :title="$t('tb.clear')" @click="act({ type: 'clear' })"><span class="ico" v-html="icons.clear"></span></button>
+        <div class="sep"></div>
+        <button class="tool exit" :title="$t('tb.exitTitle')" @click="act({ type: 'exit' })"><span class="ico">✕</span></button>
+        <button class="tool" :title="$t('tb.downloadTitle')" @click="act({ type: 'download' })"><span class="ico" v-html="icons.save"></span></button>
+        <button class="tool primary" :title="$t('tb.doneTitle')" @click="act({ type: 'done' })"><span class="ico">✔</span></button>
+      </div>
+
+      <div class="row" id="styleRow" v-show="activeTool">
+        <div class="pgroup">
+          <span
+            v-for="c in colors" :key="c" class="swatch"
+            :class="{ active: c === currentStyle.color }" :style="{ background: c }"
+            :title="$t('tb.color')" @click="pickColor(c)"
+          ></span>
+        </div>
+        <div class="sep"></div>
+        <div class="pgroup">
+          <span
+            v-for="w in widths" :key="w" class="wdot"
+            :class="{ active: w === currentStyle.width }"
+            :style="{ width: (4 + w * 2) + 'px', height: (4 + w * 2) + 'px' }"
+            :title="$t('tb.width')" @click="pickWidth(w)"
+          ></span>
+        </div>
+      </div>
+
+      <div class="row" id="rowAgents" style="margin-top:6px">
+        <button
+          v-for="a in agents" :key="a.id"
+          class="agent" :class="{ default: autoAnalyze && a.id === defaultAgentId }"
+          :title="agentTitle(a)" @click="act({ type: 'agent', agentId: a.id })"
+        ><span class="ico">{{ a.icon || '🤖' }}</span><span>{{ a.name }}</span></button>
+        <span v-if="!agents.length" class="hint">{{ $t('tb.noAgents') }}</span>
+        <span v-else-if="autoAnalyze" class="hint">{{ $t('tb.autoHint') }}</span>
+      </div>
+    </div>
+  </script>
+
+  <script src="../../../node_modules/vue/dist/vue.min.js"></script>
+  <script src="../shared/vue-i18n.js"></script>
+  <script src="toolbar-app.js"></script>
   <script src="toolbar.js"></script>
 </body>
 </html>

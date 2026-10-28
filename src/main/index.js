@@ -6,7 +6,7 @@ const { ScreenshotManager } = require('./screenshot');
 const { AnalysisManager } = require('./analysis');
 const { chatStream } = require('./ai');
 const { BUILTIN_PROVIDER, BUILTIN_PROVIDER_ID } = require('../shared/providers');
-const { setLang, t } = require('../shared/i18n');
+const { setLang, getLang, t, getDict } = require('../shared/i18n');
 
 const IS_DEV = !!process.argv.find((a) => a === '--dev');
 const PRELOAD = path.join(__dirname, '../preload/preload.js');
@@ -143,6 +143,8 @@ function setupIpc() {
   ipcMain.handle('shot:reselect', () => screenshot.handleReselect());
   ipcMain.handle('shot:canceled', () => screenshot.handleCanceled());
   ipcMain.handle('shot:copy-finish', () => screenshot.handleCopyFinish());
+  // 覆盖窗在工具条矩形内让鼠标穿透，避免全屏覆盖窗吞掉工具条点击
+  ipcMain.handle('overlay:passthrough', (e, { on }) => screenshot.setOverlayPassthrough(e.sender, on));
 
   // 工具条
   ipcMain.handle('toolbar:size', (_e, payload) => screenshot.layoutToolbar(payload));
@@ -243,6 +245,12 @@ function setupIpc() {
   // 渲染层同步获取翻译文本
   ipcMain.on('i18n:t', (e, { key, args }) => {
     e.returnValue = t(key, ...(args || []));
+  });
+
+  // 渲染层一次性取整套词典（Vue 模板用，避免每帧上百次 sendSync）
+  ipcMain.on('i18n:dict', (e) => {
+    const lang = getLang();
+    e.returnValue = { lang, dict: getDict(lang) };
   });
 }
 

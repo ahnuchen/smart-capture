@@ -73,6 +73,8 @@
     .win-ops button:hover { background: var(--hover); color: var(--text); }
     .win-ops button.close:hover { background: #e81123; color: #fff; }
     #layout { display: flex; flex: 1; overflow: hidden; }
+    /* Vue 挂载后的根节点：必须撑满 body 的纵向 flex，否则 #layout 的 flex:1 失效、main 不能滚动 */
+    #settings-root { display: flex; flex-direction: column; flex: 1; min-height: 0; }
     nav {
       width: 190px; padding: 14px 12px; border-right: 1px solid var(--border);
       background: var(--panel); display: flex; flex-direction: column; gap: 4px;
@@ -185,200 +187,260 @@
   </style>
 </head>
 <body>
-  <div id="titlebar">
-    <img src="../../../assets/icon.png" alt="" />
-    <span class="t-title" data-i18n="set.titlebar"></span>
-    <div class="win-ops">
-      <button id="winMin" data-i18n-title="win.minimize">—</button>
-      <button id="winMax" data-i18n-title="win.maximize">▢</button>
-      <button id="winClose" class="close" data-i18n-title="win.close">✕</button>
-    </div>
-  </div>
-  <div id="layout">
-    <nav>
-      <div class="nav-pad"></div>
-      <a data-page="providers" class="active" data-i18n="nav.providers"></a>
-      <a data-page="agents" data-i18n="nav.agents"></a>
-      <a data-page="capture" data-i18n="nav.capture"></a>
-      <a data-page="general" data-i18n="nav.general"></a>
-    </nav>
-    <main>
-      <!-- 模型服务 -->
-      <section class="page active" id="page-providers">
-        <h2 data-i18n="pv.title"></h2>
-        <div class="sub" data-i18n="pv.sub"></div>
-        <div class="card">
-          <h3 data-i18n="pv.current"></h3>
-          <div id="providerList"></div>
-          <div class="grid-actions">
-            <button id="btnAddProvider" class="small" data-i18n="pv.add"></button>
-          </div>
-        </div>
-        <div class="card" id="providerEditor" style="display:none">
-          <h3 id="peTitle" data-i18n="pv.editTitle"></h3>
-          <div class="field"><label data-i18n="pv.name"></label><input type="text" id="peName" data-i18n-ph="pv.namePh" /></div>
-          <div class="field"><label data-i18n="pv.base"></label><input type="text" id="peBase" data-i18n-ph="pv.basePh" /></div>
-          <div class="field"><label data-i18n="pv.key"></label><input type="password" id="peKey" data-i18n-ph="pv.keyPh" /></div>
-          <div class="field">
-            <label data-i18n="pv.models"></label>
-            <textarea id="peModels" rows="4" data-i18n-ph="pv.modelsPh"></textarea>
-          </div>
-          <div class="grid-actions">
-            <button id="peSave" class="primary small" data-i18n="pv.save"></button>
-            <button id="peCancel" class="small" data-i18n="pv.cancel"></button>
-            <button id="peDelete" class="danger small" style="display:none" data-i18n="pv.delete"></button>
-          </div>
-        </div>
-        <div class="card">
-          <h3><span data-i18n="pv.selectModel"></span> <span class="badge" id="activeProviderBadge"></span></h3>
-          <div id="modelList"></div>
-          <div class="grid-actions">
-            <button id="btnResetModels" class="small" style="display:none" data-i18n="pv.resetModels"></button>
-          </div>
-          <div class="note" style="margin-top:6px" data-i18n="pv.modelNote"></div>
-        </div>
-        <div class="card" id="modelEditor" style="display:none">
-          <h3 data-i18n="pv.meTitle"></h3>
-          <div class="field"><label data-i18n="pv.meId"></label><input type="text" id="meId" data-i18n-ph="pv.meIdPh" /></div>
-          <div class="field"><label data-i18n="pv.meName"></label><input type="text" id="meName" data-i18n-ph="pv.meNamePh" /></div>
-          <div class="field">
-            <label class="switch"><input type="checkbox" id="meVision" /> <span data-i18n="pv.meVision"></span></label>
-          </div>
-          <div class="field">
-            <label class="switch"><input type="checkbox" id="meThinking" /> <span data-i18n="pv.meThinking"></span></label>
-          </div>
-          <div class="grid-actions">
-            <button id="meSave" class="primary small" data-i18n="pv.save"></button>
-            <button id="meCancel" class="small" data-i18n="pv.cancel"></button>
-          </div>
-        </div>
-        <div class="card" id="builtinKeyCard" style="display:none">
-          <h3 data-i18n="pv.builtinKeyTitle"></h3>
-          <div class="field"><label data-i18n="pv.builtinKeyLabel"></label><input type="password" id="builtinKey" /></div>
-          <div class="grid-actions">
-            <button id="builtinKeySave" class="primary small" data-i18n="pv.builtinKeySave"></button>
-            <a id="fetchKeyLink" class="link" href="https://platform.aitools.cfd/key" target="_blank" rel="noopener" data-i18n="pv.fetchKey" data-i18n-title="pv.fetchKeyTitle"></a>
-          </div>
-        </div>
-      </section>
+  <div id="app"></div>
 
-      <!-- 智能体 -->
-      <section class="page" id="page-agents">
-        <h2 data-i18n="ag.title"></h2>
-        <div class="sub" data-i18n="ag.sub"></div>
-        <div class="card">
-          <div id="agentList"></div>
-          <div class="grid-actions">
-            <button id="btnAddAgent" class="small" data-i18n="ag.add"></button>
-            <button id="btnResetAgents" class="small" data-i18n="ag.reset"></button>
-          </div>
+  <script type="text/x-template" id="tpl-settings">
+    <div id="settings-root">
+      <div id="titlebar">
+        <img src="../../../assets/icon.png" alt="" />
+        <span class="t-title">{{ $t('set.titlebar') }}</span>
+        <div class="win-ops">
+          <button id="winMin" :title="$t('win.minimize')" @click="winOp('minimize')">—</button>
+          <button id="winMax" :title="$t('win.maximize')" @click="winOp('maximize')">▢</button>
+          <button id="winClose" class="close" :title="$t('win.close')" @click="winOp('close')">✕</button>
         </div>
-        <div class="card" id="agentEditor" style="display:none">
-          <h3 id="aeTitle" data-i18n="ag.newTitle"></h3>
-          <div class="row2">
-            <div class="field"><label data-i18n="ag.icon"></label><input type="text" id="aeIcon" maxlength="4" data-i18n-ph="ag.iconPh" /></div>
-            <div class="field"><label data-i18n="ag.name"></label><input type="text" id="aeName" data-i18n-ph="ag.namePh" /></div>
-          </div>
-          <div class="field">
-            <label data-i18n="ag.prompt"></label>
-            <textarea id="aePrompt" rows="8" data-i18n-ph="ag.promptPh"></textarea>
-          </div>
-          <div class="field">
-            <label data-i18n="ag.model"></label>
-            <select id="aeModel"></select>
-          </div>
-          <div class="grid-actions">
-            <button id="aeSave" class="primary small" data-i18n="ag.save"></button>
-            <button id="aeCancel" class="small" data-i18n="pv.cancel"></button>
-            <button id="aeDelete" class="danger small" style="display:none" data-i18n="ag.del"></button>
-          </div>
-        </div>
-      </section>
+      </div>
 
-      <!-- 截图行为 -->
-      <section class="page" id="page-capture">
-        <h2 data-i18n="cap.title"></h2>
-        <div class="sub" data-i18n="cap.sub"></div>
-        <div class="card">
-          <h3 data-i18n="cap.default"></h3>
-          <div class="field">
-            <label data-i18n="cap.defaultLabel"></label>
-            <select id="defaultAgent"></select>
-          </div>
-          <div class="field">
-            <label class="switch"><input type="checkbox" id="autoAnalyze" /> <span data-i18n="cap.autoAnalyze"></span></label>
-          </div>
-        </div>
-        <div class="card">
-          <h3 data-i18n="cap.shortcut"></h3>
-          <div class="field">
-            <label data-i18n="cap.current"></label>
-            <div><span class="kbd" id="shortcutDisplay"></span></div>
-          </div>
-          <div class="field"><label data-i18n="cap.record"></label><button id="btnRecord" data-i18n="cap.record"></button></div>
-          <div class="note" data-i18n="cap.recordNote"></div>
-        </div>
-      </section>
+      <div id="layout" v-if="loaded">
+        <nav>
+          <div class="nav-pad"></div>
+          <a v-for="pg in ['providers', 'agents', 'capture', 'general']" :key="pg" :data-page="pg" :class="{ active: page === pg }" @click="page = pg">{{ $t('nav.' + pg) }}</a>
+        </nav>
+        <main>
+          <!-- 模型服务 -->
+          <section class="page" id="page-providers" :class="{ active: page === 'providers' }">
+            <h2>{{ $t('pv.title') }}</h2>
+            <div class="sub">{{ $t('pv.sub') }}</div>
+            <div class="card">
+              <h3>{{ $t('pv.current') }}</h3>
+              <div id="providerList">
+                <div
+                  v-for="p in providers" :key="p.id" class="model-item"
+                  :class="{ active: settings.activeProviderId === p.id }" @click="selectProvider(p)"
+                >
+                  <input type="radio" name="provider" :checked="settings.activeProviderId === p.id" />
+                  <span class="grow">
+                    <div>{{ p.name }} <span v-if="p.builtIn" class="badge builtin">{{ $t('pv.builtin') }}</span></div>
+                    <div class="mid">{{ p.baseURL }}</div>
+                  </span>
+                  <span class="tag">{{ $t('pv.modelCount', (p.models || []).length) }}</span>
+                  <template v-if="!p.builtIn">
+                    <button class="small" @click.stop="openProviderEditor(p)">{{ $t('pv.editModel') }}</button>
+                    <button class="small danger" @click.stop="deleteProvider(p.id)">{{ $t('pv.delModel') }}</button>
+                  </template>
+                </div>
+              </div>
+              <div class="grid-actions">
+                <button id="btnAddProvider" class="small" @click="addProvider">{{ $t('pv.add') }}</button>
+              </div>
+            </div>
 
-      <!-- 通用 -->
-      <section class="page" id="page-general">
-        <h2 data-i18n="gen.title"></h2>
-        <div class="sub" data-i18n="gen.sub"></div>
-        <div class="card">
-          <h3 data-i18n="gen.theme"></h3>
-          <div class="field">
-            <label data-i18n="gen.themeLabel"></label>
-            <select id="theme">
-              <option value="system" data-i18n="theme.system"></option>
-              <option value="dark" data-i18n="theme.dark"></option>
-              <option value="light" data-i18n="theme.light"></option>
-            </select>
-          </div>
-        </div>
-        <div class="card">
-          <h3 data-i18n="gen.language"></h3>
-          <div class="field">
-            <label data-i18n="gen.languageLabel"></label>
-            <select id="language">
-              <option value="zh">中文</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-        </div>
-        <div class="card">
-          <h3 data-i18n="gen.startup"></h3>
-          <div class="field">
-            <label class="switch"><input type="checkbox" id="openAtLogin" /> <span data-i18n="gen.openAtLogin"></span></label>
-          </div>
-        </div>
-        <div class="card">
-          <h3 data-i18n="gen.aboutTitle"></h3>
-          <div class="note" id="aboutText"></div>
-        </div>
-      </section>
-    </main>
-  </div>
+            <div class="card" id="providerEditor" v-show="providerEditor.open" ref="providerEditorCard">
+              <h3>{{ settings.providers[providerEditor.id] ? $t('pv.editTitle') : $t('pv.addTitle') }}</h3>
+              <div class="field"><label>{{ $t('pv.name') }}</label><input type="text" id="peName" ref="peName" v-model="providerEditor.name" :placeholder="$t('pv.namePh')" /></div>
+              <div class="field"><label>{{ $t('pv.base') }}</label><input type="text" id="peBase" v-model="providerEditor.base" :placeholder="$t('pv.basePh')" /></div>
+              <div class="field"><label>{{ $t('pv.key') }}</label><input type="password" id="peKey" v-model="providerEditor.key" :placeholder="$t('pv.keyPh')" /></div>
+              <div class="field">
+                <label>{{ $t('pv.models') }}</label>
+                <textarea id="peModels" rows="4" v-model="providerEditor.models" :placeholder="$t('pv.modelsPh')"></textarea>
+              </div>
+              <div class="grid-actions">
+                <button id="peSave" class="primary small" @click="saveProvider">{{ $t('pv.save') }}</button>
+                <button id="peCancel" class="small" @click="providerEditor.open = false">{{ $t('pv.cancel') }}</button>
+                <button id="peDelete" class="danger small" v-show="!!settings.providers[providerEditor.id]" @click="deleteProvider(providerEditor.id)">{{ $t('pv.delete') }}</button>
+              </div>
+            </div>
 
-  <div id="savebar">
-    <span id="saveTip" data-i18n="savebar.saved"></span>
-    <span class="spacer"></span>
-    <span class="note" id="dirtyTip" style="display:none" data-i18n="savebar.dirty"></span>
-    <button id="btnSaveAll" class="primary" data-i18n="savebar.save"></button>
-  </div>
+            <div class="card">
+              <h3>{{ $t('pv.selectModel') }} <span class="badge" id="activeProviderBadge">{{ activeProvider ? activeProvider.name : '' }}</span></h3>
+              <div id="modelList">
+                <div
+                  v-for="m in models" :key="m.id" class="model-item"
+                  :class="{ active: settings.activeModelId === m.id }" @click="selectModel(m)"
+                >
+                  <input type="radio" name="model" :checked="settings.activeModelId === m.id" />
+                  <span class="grow"><div>{{ m.name || m.id }}</div><div class="mid">{{ m.id }}</div></span>
+                  <span class="test-result" :class="testResult(m.id).state">{{ testResult(m.id).text }}</span>
+                  <span v-if="m.vision" class="tag vision">{{ $t('pv.vision') }}</span>
+                  <span v-else class="tag">{{ $t('pv.text') }}</span>
+                  <span v-if="m.thinking" class="tag thinking">{{ $t('pv.thinking') }}</span>
+                  <button class="small" :disabled="testResult(m.id).state === 'testing'" @click.stop="testModel(m, activeProvider)">{{ $t('pv.test') }}</button>
+                  <button class="small" @click.stop="openModelEditor(m)">{{ $t('pv.editModel') }}</button>
+                  <button v-if="models.length > 1" class="small danger" @click.stop="deleteModel(m)">{{ $t('pv.delModel') }}</button>
+                </div>
+              </div>
+              <div class="grid-actions">
+                <button id="btnResetModels" class="small" v-show="activeProvider && activeProvider.builtIn" @click="resetBuiltinModels">{{ $t('pv.resetModels') }}</button>
+              </div>
+              <div class="note" style="margin-top:6px">{{ $t('pv.modelNote') }}</div>
+            </div>
 
-  <div id="dialogBox" hidden>
-    <div class="dlg">
-      <div class="dlg-msg" id="dlgMsg"></div>
-      <div class="dlg-ops">
-        <button id="dlgCancel" class="small"></button>
-        <button id="dlgOk" class="primary small"></button>
+            <div class="card" id="modelEditor" v-show="modelEditor.open">
+              <h3>{{ $t('pv.meTitle') }}</h3>
+              <div class="field"><label>{{ $t('pv.meId') }}</label><input type="text" id="meId" ref="meId" v-model="modelEditor.id" :placeholder="$t('pv.meIdPh')" /></div>
+              <div class="field"><label>{{ $t('pv.meName') }}</label><input type="text" id="meName" v-model="modelEditor.name" :placeholder="$t('pv.meNamePh')" /></div>
+              <div class="field">
+                <label class="switch"><input type="checkbox" id="meVision" v-model="modelEditor.vision" /> <span>{{ $t('pv.meVision') }}</span></label>
+              </div>
+              <div class="field">
+                <label class="switch"><input type="checkbox" id="meThinking" v-model="modelEditor.thinking" /> <span>{{ $t('pv.meThinking') }}</span></label>
+              </div>
+              <div class="grid-actions">
+                <button id="meSave" class="primary small" @click="saveModelEditor">{{ $t('pv.save') }}</button>
+                <button id="meCancel" class="small" @click="modelEditor.open = false">{{ $t('pv.cancel') }}</button>
+              </div>
+            </div>
+
+            <div class="card" id="builtinKeyCard" v-show="activeProvider && activeProvider.builtIn">
+              <h3>{{ $t('pv.builtinKeyTitle') }}</h3>
+              <div class="field"><label>{{ $t('pv.builtinKeyLabel') }}</label><input type="password" id="builtinKey" v-model="builtinKey" /></div>
+              <div class="grid-actions">
+                <button id="builtinKeySave" class="primary small" @click="saveBuiltinKey">{{ $t('pv.builtinKeySave') }}</button>
+                <a id="fetchKeyLink" class="link" href="https://platform.aitools.cfd/key" target="_blank" rel="noopener" :title="$t('pv.fetchKeyTitle')">{{ $t('pv.fetchKey') }}</a>
+              </div>
+            </div>
+          </section>
+
+          <!-- 智能体 -->
+          <section class="page" id="page-agents" :class="{ active: page === 'agents' }">
+            <h2>{{ $t('ag.title') }}</h2>
+            <div class="sub">{{ $t('ag.sub') }}</div>
+            <div class="card">
+              <div id="agentList">
+                <div v-for="a in settings.agents" :key="a.id" class="agent-item">
+                  <span class="ico">{{ a.icon || '🤖' }}</span>
+                  <span class="grow">
+                    <div class="name">{{ agentDisplayName(a) }} <span v-if="a.id === settings.defaultAgentId" class="badge">{{ $t('ag.default') }}</span> <span v-if="a.builtIn" class="badge builtin">{{ $t('ag.builtin') }}</span></div>
+                    <div class="prompt-preview">{{ agentDisplayPrompt(a).replace(/\n/g, ' ').slice(0, 80) }}</div>
+                  </span>
+                  <span class="ops">
+                    <label class="switch" :title="$t('ag.enabled')"><input type="checkbox" :checked="a.enabled !== false" @change="toggleAgent(a, $event.target.checked)" /></label>
+                    <button class="small" :title="$t('ag.setDefault')" @click="setDefaultAgent(a)">{{ $t('ag.setDefault') }}</button>
+                    <button class="small" @click="openAgentEditor(a)">{{ $t('ag.edit') }}</button>
+                    <button v-if="!a.builtIn" class="small danger" @click="deleteAgent(a)">{{ $t('ag.del') }}</button>
+                  </span>
+                </div>
+              </div>
+              <div class="grid-actions">
+                <button id="btnAddAgent" class="small" @click="openAgentEditor(null)">{{ $t('ag.add') }}</button>
+                <button id="btnResetAgents" class="small" @click="resetAgents">{{ $t('ag.reset') }}</button>
+              </div>
+            </div>
+
+            <div class="card" id="agentEditor" v-show="agentEditor.open" ref="agentEditorCard">
+              <h3>{{ agentEditor.id ? $t('ag.editTitle', agentEditor.name) : $t('ag.newTitle') }}</h3>
+              <div class="row2">
+                <div class="field"><label>{{ $t('ag.icon') }}</label><input type="text" id="aeIcon" maxlength="4" v-model="agentEditor.icon" :placeholder="$t('ag.iconPh')" /></div>
+                <div class="field"><label>{{ $t('ag.name') }}</label><input type="text" id="aeName" ref="aeName" v-model="agentEditor.name" :placeholder="$t('ag.namePh')" /></div>
+              </div>
+              <div class="field">
+                <label>{{ $t('ag.prompt') }}</label>
+                <textarea id="aePrompt" rows="8" v-model="agentEditor.prompt" :placeholder="$t('ag.promptPh')"></textarea>
+              </div>
+              <div class="field">
+                <label>{{ $t('ag.model') }}</label>
+                <select id="aeModel" v-model="agentEditor.model">
+                  <option value="">{{ $t('ag.followGlobal') }}</option>
+                  <option v-for="m in models" :key="m.id" :value="m.id">{{ (m.name || m.id) + (m.vision ? ' 👁' : '') }}</option>
+                </select>
+              </div>
+              <div class="grid-actions">
+                <button id="aeSave" class="primary small" @click="saveAgent">{{ $t('ag.save') }}</button>
+                <button id="aeCancel" class="small" @click="agentEditor.open = false">{{ $t('pv.cancel') }}</button>
+                <button id="aeDelete" v-show="agentEditor.open && agentEditor.id" class="danger small" @click="deleteEditingAgent">{{ $t('ag.del') }}</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 截图行为 -->
+          <section class="page" id="page-capture" :class="{ active: page === 'capture' }">
+            <h2>{{ $t('cap.title') }}</h2>
+            <div class="sub">{{ $t('cap.sub') }}</div>
+            <div class="card">
+              <h3>{{ $t('cap.default') }}</h3>
+              <div class="field">
+                <label>{{ $t('cap.defaultLabel') }}</label>
+                <select id="defaultAgent" v-model="settings.defaultAgentId" @change="markDirty">
+                  <option v-for="a in settings.agents" :key="a.id" :value="a.id">{{ (a.icon || '🤖') + ' ' + agentDisplayName(a) }}</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="switch"><input type="checkbox" id="autoAnalyze" v-model="settings.autoAnalyze" @change="markDirty" /> <span>{{ $t('cap.autoAnalyze') }}</span></label>
+              </div>
+            </div>
+            <div class="card">
+              <h3>{{ $t('cap.shortcut') }}</h3>
+              <div class="field">
+                <label>{{ $t('cap.current') }}</label>
+                <div><span class="kbd" id="shortcutDisplay">{{ shortcutDisplay }}</span></div>
+              </div>
+              <div class="field"><label>{{ $t('cap.record') }}</label><button id="btnRecord" @click="recording = true">{{ recording ? $t('cap.recording') : $t('cap.record') }}</button></div>
+              <div class="note">{{ $t('cap.recordNote') }}</div>
+            </div>
+          </section>
+
+          <!-- 通用 -->
+          <section class="page" id="page-general" :class="{ active: page === 'general' }">
+            <h2>{{ $t('gen.title') }}</h2>
+            <div class="sub">{{ $t('gen.sub') }}</div>
+            <div class="card">
+              <h3>{{ $t('gen.theme') }}</h3>
+              <div class="field">
+                <label>{{ $t('gen.themeLabel') }}</label>
+                <select id="theme" v-model="settings.theme" @change="markDirty">
+                  <option value="system">{{ $t('theme.system') }}</option>
+                  <option value="dark">{{ $t('theme.dark') }}</option>
+                  <option value="light">{{ $t('theme.light') }}</option>
+                </select>
+              </div>
+            </div>
+            <div class="card">
+              <h3>{{ $t('gen.language') }}</h3>
+              <div class="field">
+                <label>{{ $t('gen.languageLabel') }}</label>
+                <select id="language" v-model="settings.language" @change="markDirty">
+                  <option value="zh">中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+            <div class="card">
+              <h3>{{ $t('gen.startup') }}</h3>
+              <div class="field">
+                <label class="switch"><input type="checkbox" id="openAtLogin" v-model="settings.openAtLogin" @change="markDirty" /> <span>{{ $t('gen.openAtLogin') }}</span></label>
+              </div>
+            </div>
+            <div class="card">
+              <h3>{{ $t('gen.aboutTitle') }}</h3>
+              <div class="note" id="aboutText">{{ $t('gen.about', '1.0.0') }}</div>
+            </div>
+          </section>
+        </main>
+      </div>
+
+      <div id="savebar" v-if="loaded">
+        <span id="saveTip" :class="{ show: savedFlash }">{{ $t('savebar.saved') }}</span>
+        <span class="spacer"></span>
+        <span class="note" id="dirtyTip" v-show="dirty">{{ $t('savebar.dirty') }}</span>
+        <button id="btnSaveAll" class="primary" @click="saveNow">{{ $t('savebar.save') }}</button>
+      </div>
+
+      <div id="dialogBox" :hidden="!dialog.open" @keydown="onDialogKeydown" @mousedown="onDialogBackdrop">
+        <div class="dlg">
+          <div class="dlg-msg" id="dlgMsg">{{ dialog.message }}</div>
+          <div class="dlg-ops">
+            <button id="dlgCancel" class="small" v-show="dialog.danger" @click="dialogDone(false)">{{ $t('pv.cancel') }}</button>
+            <button id="dlgOk" ref="dlgOk" class="primary small" @click="dialogDone(true)">{{ $t(dialog.danger ? 'ag.del' : 'dlg.ok') }}</button>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
+  </script>
 
-  <script src="../../shared/i18n-dom.js"></script>
   <script src="../../shared/agents.js"></script>
-  <script>applyI18n();</script>
+  <script src="../../../node_modules/vue/dist/vue.min.js"></script>
+  <script src="../shared/vue-i18n.js"></script>
+  <script src="settings-app.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

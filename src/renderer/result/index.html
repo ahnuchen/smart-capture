@@ -43,6 +43,8 @@
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
+    /* Vue 挂载后由 #app-shell 接管 body 的纵向 flex 布局 */
+    #app-shell { display: flex; flex-direction: column; height: 100%; }
     body {
       background: var(--bg);
       color: var(--text);
@@ -202,54 +204,66 @@
   </style>
 </head>
 <body>
-  <header>
-    <span class="agent-chip" id="agentChip"></span>
-    <span class="meta" id="modelMeta"></span>
-    <span class="spacer"></span>
-    <span class="status no-drag" id="status"><span class="dot"></span><span id="statusText" data-i18n="res.waiting"></span></span>
-    <div class="win-ops no-drag">
-      <button id="winMin" data-i18n-title="win.minimize">—</button>
-      <button id="winMax" data-i18n-title="win.maximize">▢</button>
-      <button id="winClose" class="close" data-i18n-title="win.close">✕</button>
-    </div>
-  </header>
+  <div id="app"></div>
 
-  <div id="previewWrap" data-i18n-title="res.previewTip">
-    <img id="preview" alt="" />
-    <div class="pv-tip" data-i18n="res.previewTip"></div>
-  </div>
+  <script type="text/x-template" id="tpl-result">
+    <div id="app-shell">
+      <header>
+        <span class="agent-chip" id="agentChip">{{ agentIcon }} {{ agentName }}</span>
+        <span class="meta" id="modelMeta">{{ modelMeta }}</span>
+        <span class="spacer"></span>
+        <span class="status no-drag" id="status" :class="statusClass"><span class="dot"></span><span id="statusText">{{ statusText }}</span></span>
+        <div class="win-ops no-drag">
+          <button id="winMin" :title="$t('win.minimize')" @click="winOp('minimize')">—</button>
+          <button id="winMax" :title="$t('win.maximize')" @click="winOp('maximize')">▢</button>
+          <button id="winClose" class="close" :title="$t('win.close')" @click="winOp('close')">✕</button>
+        </div>
+      </header>
 
-  <div id="content">
-    <details id="reasoning">
-      <summary data-i18n="res.thinking"></summary>
-      <pre id="reasoningText"></pre>
-    </details>
-    <div class="error-box" id="errorBox"></div>
-    <div id="streamTip"><span class="spinner"></span><span data-i18n="res.streamingTip"></span></div>
-    <div id="answer" class="md"></div>
-  </div>
+      <div id="previewWrap" :title="$t('res.previewTip')" @click="togglePreview">
+        <img id="preview" :src="previewSrc" alt="" />
+        <div class="pv-tip">{{ $t('res.previewTip') }}</div>
+      </div>
 
-  <footer>
-    <div id="followup">
-      <textarea id="followupInput" data-i18n-ph="res.placeholder"></textarea>
-      <button id="btnSend" data-i18n-title="res.send" data-i18n="res.send"></button>
+      <div id="content" ref="content">
+        <details id="reasoning" :style="{ display: reasoning ? 'block' : 'none' }">
+          <summary>{{ $t('res.thinking') }}</summary>
+          <pre id="reasoningText">{{ reasoning }}</pre>
+        </details>
+        <div class="error-box" id="errorBox" v-show="error.visible">
+          <div>{{ error.message }}</div>
+          <button @click="act({ type: 'reanalyze' })">{{ $t('res.retry') }}</button>
+        </div>
+        <div id="streamTip" v-show="streamTip"><span class="spinner"></span><span>{{ $t('res.streamingTip') }}</span></div>
+        <div id="answer" class="md" v-show="answerVisible" v-html="answerHtml"></div>
+      </div>
+
+      <footer>
+        <div id="followup">
+          <textarea id="followupInput" v-model="followupText" :placeholder="$t('res.placeholder')" @keydown.enter.exact.prevent="sendFollowup"></textarea>
+          <button id="btnSend" :title="$t('res.send')" :disabled="streaming" @click="sendFollowup">{{ $t('res.send') }}</button>
+        </div>
+        <div id="actionsRow">
+          <select id="agentSelect" v-model="agentId" :title="$t('res.switchAgent')" @change="onAgentChange">
+            <option v-for="a in agents" :key="a.id" :value="a.id">{{ a.icon || '🤖' }} {{ a.name }}</option>
+          </select>
+          <button id="btnReanalyze" :disabled="streaming" @click="act({ type: 'reanalyze' })">{{ $t('res.reanalyze') }}</button>
+          <button id="btnStop" v-show="streaming" @click="act({ type: 'stop' })">{{ $t('res.stop') }}</button>
+          <button id="btnCopyResult" @click="copyResult">{{ copyResultLabel }}</button>
+          <button id="btnSaveImage" @click="act({ type: 'save-image' })">{{ $t('res.saveImage') }}</button>
+          <button id="btnCopyImage" @click="copyImage">{{ copyImageLabel }}</button>
+        </div>
+      </footer>
     </div>
-    <div id="actionsRow">
-      <select id="agentSelect" data-i18n-title="res.switchAgent"></select>
-      <button id="btnReanalyze" data-i18n="res.reanalyze"></button>
-      <button id="btnStop" style="display:none" data-i18n="res.stop"></button>
-      <button id="btnCopyResult" data-i18n="res.copyResult"></button>
-      <button id="btnSaveImage" data-i18n="res.saveImage"></button>
-      <button id="btnCopyImage" data-i18n="res.copyImage"></button>
-    </div>
-  </footer>
+  </script>
 
   <script src="../../../node_modules/marked/marked.min.js"></script>
   <script src="../../../node_modules/dompurify/dist/purify.min.js"></script>
   <script src="../../../node_modules/katex/dist/katex.min.js"></script>
   <script src="../../../node_modules/katex/dist/contrib/auto-render.min.js"></script>
-  <script src="../../shared/i18n-dom.js"></script>
-  <script>applyI18n();</script>
+  <script src="../../../node_modules/vue/dist/vue.min.js"></script>
+  <script src="../shared/vue-i18n.js"></script>
+  <script src="result-app.js"></script>
   <script src="result.js"></script>
 </body>
 </html>

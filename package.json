@@ -10,7 +10,8 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "dist-win": "electron-builder --win nsis",
-    "dist-mac": "electron-builder --mac dmg"
+    "dist-mac": "electron-builder --mac dmg",
+    "dev:tools": "electron . --dev --devtools"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -20,6 +21,7 @@
     "dompurify": "^3.2.3",
     "fabric": "^5.3.0",
     "katex": "^0.16.11",
-    "marked": "^15.0.0"
+    "marked": "^15.0.0",
+    "vue": "2.7.16"
   }
 }
