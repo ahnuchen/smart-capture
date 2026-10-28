@@ -9,10 +9,17 @@ const DEBUG = !!process.argv.find((a) => a === '--selftest' || a === '--dev');
 
 function attachConsoleTag(win, tag) {
   if (!DEBUG) return;
-  // Electron 33: (event, messageDetails)，字段在第二个参数上（旧的 5 位置参数写法已失效）
-  win.webContents.on('console-message', (_e, d) => {
-    if (!d) return;
-    console.log(`[${tag}]:`, d.message, `(${d.sourceUrl}:${d.lineNumber})`);
+  // 两种签名都要兼容：Electron 33 实际按旧签名 (event, level, message, line, source) 派发，
+  // 但类型声明里还有 (event, messageDetails) 的新形态；只按一种写会把日志打成 undefined
+  win.webContents.on('console-message', (...args) => {
+    const a = args[1];
+    if (a && typeof a === 'object') {
+      if (a.message == null) return;
+      console.log(`[${tag}]:`, a.message, `(${a.sourceUrl}:${a.lineNumber})`);
+    } else {
+      const [, level, message, line, source] = args;
+      console.log(`[${tag}]:`, message, `(${source}:${line})`);
+    }
   });
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error(`[${tag}] 页面加载失败:`, code, desc, url);
@@ -47,6 +54,8 @@ class ScreenshotManager {
     this.selection = null; // {displayId, rect(global), fullPng, apiImg}
     this.hiddenWindows = []; // 截图期间临时隐藏的窗口
     this.autoFired = false;
+    this.pins = new Set(); // 已钉在屏幕上的窗口
+    this._pinDrag = null; // {win, px, py, bounds}
   }
 
   isActive() {
@@ -359,6 +368,92 @@ class ScreenshotManager {
     this.syncToolbarRectToOverlay(); // 让覆盖窗知道工具条位置，用于鼠标穿透
   }
 
+  // ---- 钉图 ----
+  createPin(png, rect) {
+    if (!png || !rect) return null;
+    // 注意：选区用的是 w/h，Electron 的 Rectangle 要 width/height
+    const wa = screen.getDisplayMatching({ x: rect.x, y: rect.y, width: rect.w, height: rect.h }).workArea;
+    const w = Math.max(1, Math.round(rect.w));
+    const h = Math.max(1, Math.round(rect.h));
+    const x = Math.min(Math.max(rect.x, wa.x), wa.x + Math.max(0, wa.width - w));
+    const y = Math.min(Math.max(rect.y, wa.y), wa.y + Math.max(0, wa.height - h));
+    const win = new BrowserWindow({
+      x, y, width: w, height: h,
+      frame: false,
+      // 不透明窗口：透明窗在部分显卡/环境下会整块不可见或点击穿透，钉图不需要透明
+      transparent: false,
+      backgroundColor: '#101218',
+      show: true, // 创建即可见，不依赖 ready-to-show
+      resizable: false,
+      movable: true, // -webkit-app-region 拖拽依赖窗口本身可移动
+      minimizable: false,
+      maximizable: false,
+      skipTaskbar: true,
+      hasShadow: false,
+      // 与工具条一致用非聚焦窗：聚焦窗的第一次点击会被 Windows 的激活流程吞掉（表现为拖不动）
+      focusable: false,
+      webPreferences: {
+        preload: PRELOAD,
+        contextIsolation: true,
+        nodeIntegration: false,
+        backgroundThrottling: false,
+      },
+    });
+    win.setMenu(null);
+    win.setAlwaysOnTop(true, 'floating');
+    attachConsoleTag(win, 'pin');
+    this.pins.add(win);
+    win.on('closed', () => { this.pins.delete(win); });
+    win.loadFile(path.join(__dirname, '../renderer/pin/index.html'));
+    // ready-to-show 在部分透明窗上不一定触发，用 did-finish-load 兜底，两条路都确保显示
+    const showPin = (why) => {
+      if (win.isDestroyed()) return;
+      win.setAlwaysOnTop(true, 'floating');
+      win.showInactive();
+      win.moveTop();
+      if (DEBUG) console.log('[screenshot] pin shown (' + why + '):', win.isVisible(), JSON.stringify(win.getBounds()));
+    };
+    win.webContents.once('did-finish-load', () => {
+      if (win.isDestroyed()) return;
+      win.webContents.send('pin:init', { image: png });
+      setTimeout(() => showPin('did-finish-load'), 60);
+    });
+    win.once('ready-to-show', () => showPin('ready-to-show'));
+    if (DEBUG) console.log('[screenshot] pin created:', JSON.stringify({ x, y, w, h }));
+    return win;
+  }
+
+  pinFromSender(sender) {
+    return [...this.pins].find((w) => !w.isDestroyed() && w.webContents === sender) || null;
+  }
+
+  startPinDrag(sender, { x, y }) {
+    const win = this.pinFromSender(sender);
+    if (!win) return { ok: false };
+    this._pinDrag = { win, px: x, py: y, bounds: win.getBounds() };
+    return { ok: true };
+  }
+
+  movePinDrag(sender, { x, y }) {
+    const d = this._pinDrag;
+    if (!d || !d.win || d.win.isDestroyed() || d.win.webContents !== sender) return { ok: false };
+    const nx = Math.round(d.bounds.x + (x - d.px));
+    const ny = Math.round(d.bounds.y + (y - d.py));
+    d.win.setBounds({ x: nx, y: ny, width: d.bounds.width, height: d.bounds.height });
+    return { ok: true };
+  }
+
+  endPinDrag(sender) {
+    if (this._pinDrag && this._pinDrag.win && this._pinDrag.win.webContents === sender) this._pinDrag = null;
+    return { ok: true };
+  }
+
+  closePin(sender) {
+    const win = this.pinFromSender(sender);
+    if (win) win.close();
+    return { ok: !!win };
+  }
+
   // ---- 工具条拖动（左侧手柄） ----
   startToolbarDrag({ x, y }) {
     const win = this.toolbar;
@@ -446,6 +541,15 @@ class ScreenshotManager {
         if (!agent) return;
         this.startAnalysis(agent.id, 'manual');
         this.finish(); // 关闭覆盖窗与工具条，结果窗口接管
+        break;
+      }
+      case 'pin': {
+        // 钉图：先把当前合成图与选区存下来，再结束截图会话
+        if (!this.selection) return;
+        const png = this.selection.fullPng;
+        const rect = { ...this.selection.rect };
+        this.finish();
+        this.createPin(png, rect);
         break;
       }
       case 'done':

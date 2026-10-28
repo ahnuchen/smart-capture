@@ -136,6 +136,7 @@
         <button class="tool" :title="$t('tb.clear')" @click="act({ type: 'clear' })"><span class="ico" v-html="icons.clear"></span></button>
         <div class="sep"></div>
         <button class="tool exit" :title="$t('tb.exitTitle')" @click="act({ type: 'exit' })"><span class="ico">✕</span></button>
+        <button class="tool" :title="$t('tb.pinTitle')" @click="act({ type: 'pin' })"><span class="ico" v-html="icons.pin"></span></button>
         <button class="tool" :title="$t('tb.downloadTitle')" @click="act({ type: 'download' })"><span class="ico" v-html="icons.save"></span></button>
         <button class="tool primary" :title="$t('tb.doneTitle')" @click="act({ type: 'done' })"><span class="ico">✔</span></button>
       </div>

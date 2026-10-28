@@ -149,6 +149,11 @@ function setupIpc() {
   ipcMain.handle('toolbar:drag-start', (_e, p) => screenshot.startToolbarDrag(p));
   ipcMain.handle('toolbar:drag-move', (_e, p) => screenshot.moveToolbarDrag(p));
   ipcMain.handle('toolbar:drag-end', () => screenshot.endToolbarDrag());
+  // 钉图窗口：拖动与关闭
+  ipcMain.handle('pin:drag-start', (e, p) => screenshot.startPinDrag(e.sender, p));
+  ipcMain.handle('pin:drag-move', (e, p) => screenshot.movePinDrag(e.sender, p));
+  ipcMain.handle('pin:drag-end', (e) => screenshot.endPinDrag(e.sender));
+  ipcMain.handle('pin:close', (e) => screenshot.closePin(e.sender));
 
   // 工具条
   ipcMain.handle('toolbar:size', (_e, payload) => screenshot.layoutToolbar(payload));
