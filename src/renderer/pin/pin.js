@@ -22,11 +22,13 @@ function close() {
 }
 
 // 关闭：按下即关（不依赖 down/up 落在同一元素上的 click 事件），另外保留 click 兜底
-closeBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); close(); });
+closeBtn.addEventListener('pointerdown', (e) => { console.log('[pin] close down button=', e.button); e.stopPropagation(); e.preventDefault(); close(); });
 closeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
 closeBtn.addEventListener('click', (e) => { e.stopPropagation(); close(); });
 document.addEventListener('contextmenu', (e) => { e.preventDefault(); close(); });
 document.addEventListener('dblclick', close);
+// 窗口现在会被激活，ESC 也能关
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 
 /* 拖动：pointer 与 mouse 双通道（哪个能收到就用哪个），位移交给主进程 setBounds */
 let dragging = false;
@@ -55,6 +57,7 @@ function beginDrag(sx, sy) {
 }
 
 function onDown(e) {
+  console.log('[pin] down type=', e.type, 'button=', e.button, 'buttons=', e.buttons, 'target=', e.target && e.target.id);
   if (e.button !== 0 || e.target === closeBtn) return;
   e.preventDefault();
   if (cleanup) cleanup();

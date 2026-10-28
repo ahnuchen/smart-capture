@@ -390,8 +390,8 @@ class ScreenshotManager {
       maximizable: false,
       skipTaskbar: true,
       hasShadow: false,
-      // 与工具条一致用非聚焦窗：聚焦窗的第一次点击会被 Windows 的激活流程吞掉（表现为拖不动）
-      focusable: false,
+      // 必须可聚焦并立刻激活：未激活窗口的「左键」会走激活路径被吞（右键不受影响）
+      focusable: true,
       webPreferences: {
         preload: PRELOAD,
         contextIsolation: true,
@@ -409,9 +409,10 @@ class ScreenshotManager {
     const showPin = (why) => {
       if (win.isDestroyed()) return;
       win.setAlwaysOnTop(true, 'floating');
-      win.showInactive();
+      win.show();
+      win.focus();
       win.moveTop();
-      if (DEBUG) console.log('[screenshot] pin shown (' + why + '):', win.isVisible(), JSON.stringify(win.getBounds()));
+      if (DEBUG) console.log('[screenshot] pin shown (' + why + '): visible=', win.isVisible(), 'focused=', win.isFocused(), JSON.stringify(win.getBounds()));
     };
     win.webContents.once('did-finish-load', () => {
       if (win.isDestroyed()) return;
