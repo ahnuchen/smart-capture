@@ -7,6 +7,7 @@
   let tool = null; // 未选中工具 = 画布不接收事件，避免干扰选区/热区
   let color = '#ff3b30';
   let strokeWidth = 4;
+  let textSize = 20; // 文字工具字号，与线宽分开
   let history = [];
   let histIdx = -1;
   let draft = null;
@@ -97,6 +98,7 @@
     if (style) {
       if (style.color) color = style.color;
       if (style.width) strokeWidth = style.width;
+      if (style.size) textSize = style.size;
     }
     if (next === tool) { applyTool(); return; }
     if (fc) fc.discardActiveObject();
@@ -107,6 +109,7 @@
 
   function setColor(c) { color = c; applyTool(); }
   function setWidth(w) { strokeWidth = w; applyTool(); }
+  function setSize(s) { textSize = Math.min(96, Math.max(10, Number(s) || 20)); }
 
   function isEditingText() {
     if (editingText) return true;
@@ -233,7 +236,7 @@
       left: x,
       top: y,
       fontFamily: '"Microsoft YaHei", "Segoe UI", sans-serif',
-      fontSize: Math.max(14, Math.round(strokeWidth * 5)),
+      fontSize: Math.min(96, Math.max(10, Math.round(textSize))),
       fill: color,
       editable: true,
       originX: 'left',
@@ -264,11 +267,15 @@
     const bctx = big.getContext('2d');
     bctx.imageSmoothingEnabled = false;
     bctx.drawImage(small, 0, 0, vw, vh);
+    // 源图是物理像素（rect.w*ratio 宽），scale=1/ratio 后 1 CSS px = 1/ratio 元素像素，
+    // 后面用左上角锚点 + cropX/cropY 就能直接用 CSS 坐标裁剪，不需要居中换算
     mosaicFull = new fabric.Image(big, {
-      left: rect.w / 2,
-      top: rect.h / 2,
-      originX: 'center',
-      originY: 'center',
+      left: 0,
+      top: 0,
+      originX: 'left',
+      originY: 'top',
+      scaleX: 1 / ratio,
+      scaleY: 1 / ratio,
       selectable: false,
       evented: false,
       hoverCursor: 'default',
@@ -276,29 +283,30 @@
   }
 
   function cloneMosaic() {
+    const ratio = getRatio();
     return new fabric.Image(mosaicFull.getElement(), {
-      left: mosaicFull.left,
-      top: mosaicFull.top,
-      originX: 'center',
-      originY: 'center',
-      scaleX: mosaicFull.scaleX,
-      scaleY: mosaicFull.scaleY,
+      left: 0,
+      top: 0,
+      originX: 'left',
+      originY: 'top',
+      scaleX: 1 / ratio,
+      scaleY: 1 / ratio,
       hoverCursor: 'default',
     });
   }
 
   // 把像素化底图裁剪到给定选区局部矩形（CSS 坐标）
   function setMosaicBox(img, x, y, w, h) {
-    const sc = mosaicFull.scaleX || 1;
     const ratio = getRatio();
     img.set({
-      left: x + w / 2,
-      top: y + h / 2,
-      width: Math.max(1, Math.round((w * ratio) / sc)),
-      height: Math.max(1, Math.round((h * ratio) / sc)),
-      cropX: (x * ratio) / sc,
-      cropY: (y * ratio) / sc,
+      left: Math.round(x),
+      top: Math.round(y),
+      width: Math.max(1, Math.round(w * ratio)),
+      height: Math.max(1, Math.round(h * ratio)),
+      cropX: Math.round(x * ratio),
+      cropY: Math.round(y * ratio),
     });
+    img.dirty = true;
     img.setCoords();
   }
 
@@ -345,6 +353,6 @@
 
   window.FabricController = {
     configure, ensure, reset, applyTool, setTool, setColor, setWidth,
-    isEditingText, exitEditing, undo, redo, clear, hasObjects, toDataURL, resize,
+    isEditingText, exitEditing, undo, redo, clear, hasObjects, toDataURL, resize, setSize,
   };
 })();

@@ -48,8 +48,9 @@
         icons: ICONS,
         colors: ['#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#af52de', '#000000', '#ffffff'],
         widths: [2, 4, 7],
+        textSizes: [10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 56, 64, 72, 84, 96],
         activeTool: initialTool(),
-        defaultStyle: { color: '#ff3b30', width: 4 },
+        defaultStyle: { color: '#ff3b30', width: 4, size: 20 },
         styles: {}, // toolId -> { color, width }，首次使用时从 defaultStyle 继承
         agents: [],
         defaultAgentId: null,
@@ -92,7 +93,7 @@
         // 渲染层重载后恢复的工具：补发一次让覆盖窗跟上
         if (this.activeTool) {
           const st = this.styleFor(this.activeTool);
-          this.act({ type: 'tool', value: this.activeTool, color: st.color, width: st.width });
+          this.act({ type: 'tool', value: this.activeTool, color: st.color, width: st.width, size: st.size });
         }
       },
       toggleTool(id) {
@@ -103,6 +104,7 @@
           type: 'tool', value: this.activeTool,
           color: st ? st.color : null,
           width: st ? st.width : null,
+          size: st ? st.size : null,
         });
         this.$nextTick(() => this.reportSize());
       },
@@ -113,6 +115,11 @@
       pickWidth(w) {
         this.currentStyle.width = w;
         this.act({ type: 'width', value: w });
+      },
+      // 文字工具专用：字号走独立通道，不再借用线宽
+      pickSize(size) {
+        this.currentStyle.size = size;
+        this.act({ type: 'size', value: size });
       },
       agentTitle(a) {
         const keep = (a.systemPrompt || '').slice(0, 120);

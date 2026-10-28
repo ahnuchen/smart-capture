@@ -409,6 +409,7 @@ class ScreenshotManager {
       case 'tool':
       case 'color':
       case 'width':
+      case 'size':
       case 'undo':
       case 'redo':
       case 'clear':

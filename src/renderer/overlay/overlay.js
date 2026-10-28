@@ -409,6 +409,7 @@ function handleToolCommand(cmd) {
       break;
     case 'color': FabricController.setColor(cmd.value); break;
     case 'width': FabricController.setWidth(cmd.value); break;
+    case 'size': FabricController.setSize(cmd.value); break;
     case 'undo': FabricController.undo(); break;
     case 'redo': FabricController.redo(); break;
     case 'clear': FabricController.clear(); break;

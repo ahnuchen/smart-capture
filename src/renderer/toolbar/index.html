@@ -98,7 +98,15 @@
     .wdot.active { box-shadow: 0 0 0 2px var(--tb-active-ring); }
     .pgroup { display: flex; align-items: center; gap: 7px; }
     #styleRow .sep { margin: 0 2px; }
-    #styleRow .hint { font-size: 11px; }
+    #styleRow .hint { font-size: 11px; color: var(--tb-muted); }
+    /* 字号下拉：贴合工具条配色，高度与线宽行一致 */
+    #styleRow .size-select {
+      height: 23px; padding: 0 6px; border-radius: 6px; cursor: pointer;
+      background: var(--tb-bg); color: var(--tb-text);
+      border: 1px solid var(--tb-border); font-size: 12px; font-family: inherit;
+      outline: none;
+    }
+    #styleRow .size-select option { background: var(--tb-bg); color: var(--tb-text); }
   </style>
 </head>
 <body>
@@ -131,7 +139,14 @@
           ></span>
         </div>
         <div class="sep"></div>
-        <div class="pgroup">
+        <!-- 文字工具用字号下拉，其余工具用线宽点 -->
+        <div class="pgroup" v-if="activeTool === 'text'">
+          <span class="hint">{{ $t('tb.fontSize') }}</span>
+          <select class="size-select" :title="$t('tb.fontSize')" :value="currentStyle.size" @change="pickSize(Number($event.target.value))">
+            <option v-for="s in textSizes" :key="s" :value="s">{{ s }}</option>
+          </select>
+        </div>
+        <div class="pgroup" v-else>
           <span
             v-for="w in widths" :key="w" class="wdot"
             :class="{ active: w === currentStyle.width }"
