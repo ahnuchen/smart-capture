@@ -19,10 +19,13 @@ const DEFAULT_SETTINGS = {
   shortcut: 'CommandOrControl+Alt+X',
   recordShortcut: 'CommandOrControl+Alt+R',
   openAtLogin: false,
+  // 结果窗口上次被拖到的位置 {x,y}；空 = 每次居中
+  resultBounds: null,
 };
 
 function deepMerge(base, override) {
-  if (Array.isArray(base) || Array.isArray(override) || override === null || typeof base !== 'object' || typeof override !== 'object') {
+  // base 为 null 时 typeof 也是 'object'，必须单独挡掉，否则下面 base[k] 会抛
+  if (base === null || Array.isArray(base) || Array.isArray(override) || override === null || typeof base !== 'object' || typeof override !== 'object') {
     return override === undefined ? base : override;
   }
   const out = { ...base };

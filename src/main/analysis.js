@@ -69,14 +69,53 @@ class AnalysisManager {
     this.createWindow(session);
   }
 
+  // 结果窗口位置：默认居中，之后沿用用户上次拖到的位置（与截图选区无关）
+  resultBounds(session) {
+    const W = 620;
+    const last = this.store.data.resultBounds;
+    if (last && Number.isFinite(last.x) && Number.isFinite(last.y)) {
+      const d = screen.getDisplayNearestPoint({ x: Math.round(last.x), y: Math.round(last.y) });
+      const a = d.workArea;
+      const H = Math.min(720, a.height);
+      // 上次位置还落在某块屏幕里就沿用，否则回到居中
+      const visible = last.x + W - 80 > a.x && last.x + 80 < a.x + a.width
+        && last.y + 40 > a.y && last.y + 40 < a.y + a.height;
+      if (visible) {
+        return {
+          x: Math.round(Math.min(Math.max(last.x, a.x), a.x + a.width - W)),
+          y: Math.round(Math.min(Math.max(last.y, a.y), a.y + a.height - H)),
+          width: W,
+          height: H,
+        };
+      }
+    }
+    const display = session.sourceRect
+      ? screen.getDisplayNearestPoint({
+        x: session.sourceRect.x + Math.floor(session.sourceRect.w / 2),
+        y: session.sourceRect.y + Math.floor(session.sourceRect.h / 2),
+      })
+      : screen.getPrimaryDisplay();
+    const wa = display.workArea;
+    const H = Math.min(720, wa.height);
+    return {
+      x: Math.round(wa.x + (wa.width - W) / 2),
+      y: Math.round(wa.y + (wa.height - H) / 2),
+      width: W,
+      height: H,
+    };
+  }
+
   createWindow(session) {
     if (this.resultWin && !this.resultWin.isDestroyed()) {
       this.abort();
       this.resultWin.close();
     }
+    const { x, y, width: winW, height: winH } = this.resultBounds(session);
     const win = new BrowserWindow({
-      width: 620,
-      height: 740,
+      x,
+      y,
+      width: winW,
+      height: winH,
       minWidth: 420,
       minHeight: 420,
       show: false,
@@ -95,19 +134,21 @@ class AnalysisManager {
     win.setAlwaysOnTop(true, 'screen-saver');
     this.resultWin = win;
 
-    // 尽量放在选区右侧，放不下则靠左 / 居中
-    try {
-      if (session.sourceRect) {
-        const r = session.sourceRect;
-        const display = screen.getDisplayNearestPoint({ x: r.x + Math.floor(r.w / 2), y: r.y + Math.floor(r.h / 2) });
-        const wa = display.workArea;
-        let x = r.x + r.w + 16;
-        if (x + 620 > wa.x + wa.width) x = r.x - 620 - 16;
-        if (x < wa.x) x = Math.min(r.x + r.w + 16, wa.x + Math.max(0, wa.width - 620));
-        let y = Math.max(wa.y, Math.min(r.y, wa.y + wa.height - 480));
-        win.setBounds({ x, y, width: 620, height: Math.min(720, wa.height) });
-      }
-    } catch (_) { /* 位置失败时使用默认居中 */ }
+    // 记住用户拖过的位置（拖动结束后防抖写盘）
+    let moveTimer = null;
+    const rememberPos = () => {
+      if (win.isDestroyed() || win.isMinimized() || win.isMaximized() || win.isFullScreen()) return;
+      const b = win.getBounds();
+      this.store.patch({ resultBounds: { x: b.x, y: b.y } });
+    };
+    win.on('move', () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(rememberPos, 400);
+    });
+    win.on('close', () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      rememberPos();
+    });
 
     win.on('closed', () => {
       if (this.resultWin === win) this.resultWin = null;

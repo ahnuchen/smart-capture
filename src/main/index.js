@@ -187,6 +187,8 @@ function setupIpc() {
     const prevLogin = store.data.openAtLogin;
     const prevLang = store.data.language;
     const prevTheme = store.data.theme;
+    // 结果窗口位置由它自己维护，设置页拿到的是旧快照，保存时不要覆盖回去
+    delete settings.resultBounds;
     store.data = store.patch(normalizeSettings(settings));
     if (store.data.language !== prevLang) setLang(store.data.language);
     if (store.data.theme !== prevTheme) applyTheme();
