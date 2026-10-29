@@ -1,7 +1,6 @@
 /* 录制控制条：计时 + 停止/取消，按住非按钮区可拖动窗口 */
 const bridge = window.api;
 const timeEl = document.getElementById('time');
-const statusEl = document.getElementById('status');
 const btnStop = document.getElementById('btnStop');
 
 function fmtTime(s) {
@@ -13,7 +12,6 @@ function fmtTime(s) {
 bridge.on('rec:mode', ({ mode }) => {
   if (mode !== 'live') return;
   btnStop.disabled = false;
-  statusEl.style.display = 'none';
   timeEl.textContent = '00:00';
 });
 
@@ -42,7 +40,5 @@ document.addEventListener('mousedown', onDragDown);
 document.getElementById('btnCancel').addEventListener('click', () => bridge.invoke('rec:cancel'));
 btnStop.addEventListener('click', () => {
   btnStop.disabled = true;
-  statusEl.style.display = 'inline';
-  statusEl.textContent = '正在保存…';
   bridge.invoke('rec:stop');
 });

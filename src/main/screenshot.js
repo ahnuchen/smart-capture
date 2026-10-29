@@ -60,6 +60,7 @@ class ScreenshotManager {
     this.recording = false;
     this.recWin = null;
     this.recBar = null;
+    this.recFrame = null;
     this.recTimer = null;
     this.recStartedAt = 0;
     this.recPhase = 'idle'; // idle | setup | countdown | live
@@ -449,6 +450,28 @@ class ScreenshotManager {
       w: Math.round(rect.w),
       h: Math.round(rect.h),
     };
+    // 录制区域边框：比选区大 3px，边框落在选区外侧，不会被录进成片；点击穿透，不挡下层操作
+    const FRAME_B = 3;
+    const frame = new BrowserWindow({
+      x: Math.round(region.x - FRAME_B), y: Math.round(region.y - FRAME_B),
+      width: Math.round(region.w + FRAME_B * 2), height: Math.round(region.h + FRAME_B * 2),
+      frame: false, transparent: true, backgroundColor: '#00000000',
+      resizable: false, movable: false, skipTaskbar: true, hasShadow: false,
+      focusable: false, show: false,
+      webPreferences: { contextIsolation: true, nodeIntegration: false },
+    });
+    frame.setMenu(null);
+    frame.setIgnoreMouseEvents(true);
+    this.recFrame = frame;
+    frame.loadFile(path.join(__dirname, '../renderer/recframe/index.html'));
+    frame.webContents.once('did-finish-load', () => {
+      if (frame.isDestroyed()) return;
+      frame.setAlwaysOnTop(true, 'floating');
+      frame.showInactive();
+      frame.moveTop();
+      if (DEBUG) console.log('[rec] frame shown visible=', frame.isVisible(), JSON.stringify(frame.getBounds()));
+    });
+
     const wa = display.workArea;
     const BAR_W = 268, BAR_H = 56, GAP = 10;
     const barX = Math.min(Math.max(region.x + region.w - BAR_W, wa.x + 8), wa.x + wa.width - BAR_W - 8);
@@ -524,11 +547,20 @@ class ScreenshotManager {
     return { ok: true };
   }
 
+  // 一按停止就收起操作栏（保存期间不再显示停止/取消），区域边框留到保存对话框出现
+  hideRecBar() {
+    if (this.recTimer) { clearInterval(this.recTimer); this.recTimer = null; }
+    if (this.recBar && !this.recBar.isDestroyed()) this.recBar.hide();
+  }
+
   stopRecording() {
     if (this.recPhase !== 'live') return;
+    this.hideRecBar();
+    // 停止后不再框着屏幕，接下来的保存对话框自己会给出反馈
+    if (this.recFrame && !this.recFrame.isDestroyed()) this.recFrame.close();
+    this.recFrame = null;
     // 录制页可能还没就绪（getUserMedia 冷启动 1~2 秒），先挂起，就绪后立刻停
     if (!this.recReady) { this._stopPending = true; if (DEBUG) console.log('[rec] stop pending (recorder not ready)'); return; }
-    if (this.recTimer) { clearInterval(this.recTimer); this.recTimer = null; }
     if (this.recWin && !this.recWin.isDestroyed()) this.recWin.webContents.send('rec:stopReq');
     if (DEBUG) console.log('[rec] stop requested');
   }
@@ -598,6 +630,8 @@ class ScreenshotManager {
     if (this.recCountTimer) { clearTimeout(this.recCountTimer); this.recCountTimer = null; }
     if (this.recBar && !this.recBar.isDestroyed()) this.recBar.close();
     this.recBar = null;
+    if (this.recFrame && !this.recFrame.isDestroyed()) this.recFrame.close();
+    this.recFrame = null;
     if (this.recWin && !this.recWin.isDestroyed()) this.recWin.close();
     this.recWin = null;
     this.recording = false;

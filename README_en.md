@@ -28,7 +28,8 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: capture →
 
 ### Screen recording
 - **Area recording**: global shortcut (default `Ctrl/Cmd+Alt+R`, configurable) or tray trigger; pick `MP4` / `GIF` inside the selection, then a **3-second countdown** before recording starts (silent)
-- **Recording bar**: sits just outside the selection, draggable, shows a live timer; `Stop` saves, `Cancel` discards
+- **Selection stays visible**: a blue frame is drawn around the selection while recording (click-through, so it never blocks the app underneath; drawn outside the selection so it is never captured)
+- **Recording bar**: sits just outside the selection, draggable, shows a live timer; `Stop` saves, `Cancel` discards. Clicking `Stop` hides both the bar and the frame and goes straight to saving
 - Records the raw screen stream and crops to the selection on save (physical pixels on HiDPI), so it no longer depends on compositor frames — static screens still record
 
 ### AI analysis
