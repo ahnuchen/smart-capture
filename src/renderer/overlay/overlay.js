@@ -20,12 +20,17 @@ let rect = null; // {x,y,w,h} CSS 像素，相对本窗口
 let ratio = 1; // 物理像素 / CSS 像素
 // 会话标志必须存在渲染层局部变量里：window.api 是 contextBridge 冻结对象，写上去会静默失败
 let sessionSent = false;
+let recordMode = false; // 录屏选区模式：确认后只上报矩形，不建标注层/工具条
 
 /* ---------- Vue 外围 UI ---------- */
 Vue.config.productionTip = false;
 window.CaptureI18n.boot();
 const app = new Vue(window.OverlayApp).$mount('#app');
 const tipEl = document.getElementById('tip');
+const recStartBtn = document.getElementById('recStart');
+const recCancelBtn = document.getElementById('recCancel');
+if (recStartBtn) recStartBtn.addEventListener('click', startRecCountdown);
+if (recCancelBtn) recCancelBtn.addEventListener('click', () => bridge.invoke('shot:canceled'));
 const pickMag = document.getElementById('pickMag');
 
 /* ---------- 取色器 ---------- */
@@ -48,8 +53,9 @@ FabricController.configure({
 });
 app.onAdjustStart = (kind, e) => startAdjDrag(kind, e);
 
-bridge.on('overlay:init', ({ image, displayId: id }) => {
+bridge.on('overlay:init', ({ image, displayId: id, record }) => {
   displayId = id;
+  recordMode = !!record;
   pickMag.width = MAG_PX;
   pickMag.height = MAG_PX;
   magCtx = pickMag.getContext('2d');
@@ -190,6 +196,7 @@ function resetToIdle() {
   app.size.visible = false;
   hideTip();
   hidePicker(); // 顺带收起十字线
+  hideRecUi();
   dim.style.display = 'block'; // 重新变暗，回到初始框选状态
 }
 
@@ -236,7 +243,64 @@ function drawSelection(confirmed) {
   }
 }
 
+/* ---------- 录屏：选区内的格式面板 + 3 秒倒计时 ---------- */
+function showRecPanel() {
+  const panel = document.getElementById('recPanel');
+  if (!panel) return;
+  panel.classList.add('show');
+  const w = panel.offsetWidth || 268;
+  const h = panel.offsetHeight || 96;
+  panel.style.left = Math.max(8, Math.min(rect.x + rect.w / 2 - w / 2, window.innerWidth - w - 8)) + 'px';
+  panel.style.top = Math.max(8, Math.min(rect.y + rect.h / 2 - h / 2, window.innerHeight - h - 8)) + 'px';
+}
+
+function hideRecUi() {
+  const panel = document.getElementById('recPanel');
+  const count = document.getElementById('recCount');
+  if (panel) panel.classList.remove('show');
+  if (count) count.classList.remove('show');
+}
+
+function sendRecSelection(format) {
+  bridge.invoke('rec:selection', {
+    displayId,
+    format,
+    rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.w), h: Math.round(rect.h) },
+  }).catch((e) => console.error('[overlay] rec:selection 失败:', e.message));
+}
+
+function startRecCountdown() {
+  const picked = document.querySelector('input[name=recfmt]:checked');
+  const format = picked ? picked.value : 'mp4';
+  hideRecUi();
+  const count = document.getElementById('recCount');
+  if (!count) { sendRecSelection(format); return; }
+  count.classList.add('show');
+  count.style.left = (rect.x + rect.w / 2 - 48) + 'px';
+  count.style.top = (rect.y + rect.h / 2 - 48) + 'px';
+  let n = 3;
+  count.textContent = String(n);
+  const tick = () => {
+    n -= 1;
+    if (n <= 0) { count.classList.remove('show'); sendRecSelection(format); return; }
+    count.textContent = String(n);
+    setTimeout(tick, 1000);
+  };
+  setTimeout(tick, 1000);
+}
+
 async function confirmSelection() {
+  if (recordMode) {
+    // 录屏：只把区域交给主进程，不生成截图/工具条
+    setMode('confirm');
+    document.body.classList.remove('selecting');
+    dim.style.display = 'none';
+    app.size.visible = false;
+    hidePicker();
+    hideTip();
+    showRecPanel();
+    return;
+  }
   setMode('confirm');
   document.body.classList.remove('selecting');
   dim.style.display = 'none';

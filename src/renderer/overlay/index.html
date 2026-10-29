@@ -78,6 +78,33 @@
     #crossV { top: 0; bottom: 0; width: 1px; }
     #crossH { left: 0; right: 0; height: 1px; }
 
+    /* 录屏设置面板（居中于选区）与倒计时 */
+    #recPanel {
+      position: absolute; display: none; z-index: 20;
+      flex-direction: column; gap: 10px; padding: 12px 14px;
+      border-radius: 10px; background: rgba(21, 23, 31, 0.97);
+      color: #dbe2f0; border: 1px solid rgba(120, 130, 160, 0.4);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); pointer-events: auto;
+      font: 13px/1.4 "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+    #recPanel.show { display: flex; }
+    #recPanel .row { display: flex; align-items: center; gap: 8px; }
+    #recPanel .title { color: #8b93a7; font-size: 12px; }
+    #recPanel label.opt { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    #recPanel button {
+      border: none; border-radius: 7px; padding: 7px 12px; cursor: pointer;
+      font: 13px/1 inherit; color: #dbe2f0; background: rgba(99, 130, 255, 0.22);
+    }
+    #recPanel button.primary { background: #2f6fe0; color: #fff; }
+    #recPanel .actions { justify-content: flex-end; }
+    #recCount {
+      position: absolute; display: none; z-index: 21;
+      align-items: center; justify-content: center;
+      width: 96px; height: 96px; border-radius: 50%;
+      background: rgba(21, 23, 31, 0.92); border: 1px solid rgba(96, 165, 250, 0.7);
+      color: #fff; font: 700 40px/1 "Segoe UI", sans-serif;
+    }
+    #recCount.show { display: flex; }
     /* 取色器 */
     #picker {
       position: absolute;
@@ -129,6 +156,17 @@
           @mousedown.prevent="adjustStart(h.cur, $event)"
         ></div>
       </div>
+      <div id="recPanel">
+        <div class="row"><span class="title">{{ $t('rec.format') }}</span>
+          <label class="opt"><input type="radio" name="recfmt" value="mp4" checked /> MP4</label>
+          <label class="opt"><input type="radio" name="recfmt" value="gif" /> GIF</label>
+        </div>
+        <div class="row actions">
+          <button id="recCancel">{{ $t('rec.cancel') }}</button>
+          <button id="recStart" class="primary">{{ $t('rec.start') }}</button>
+        </div>
+      </div>
+      <div id="recCount">3</div>
       <div id="picker" :style="pickerStyle">
         <canvas id="pickMag"></canvas>
         <div id="pickRow"><span id="pickSwatch" :style="{ background: picker.color }"></span><span id="pickText">{{ picker.text }}</span></div>

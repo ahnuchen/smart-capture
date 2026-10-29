@@ -8,6 +8,9 @@ files:
   - package.json
   - "!node_modules/.bin"
 icon: assets/icon.png
+# ffmpeg 二进制必须解包到 asar 外才能执行
+asarUnpack:
+  - "**/node_modules/@ffmpeg-installer/**"
 win:
   icon: assets/icon.png
   target:

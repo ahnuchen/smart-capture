@@ -73,8 +73,14 @@ function openSettings() {
 function registerShortcut() {
   try {
     globalShortcut.unregisterAll();
-    const ok = globalShortcut.register(store.data.shortcut, () => screenshot.start());
-    if (!ok) console.warn('[shortcut] 注册失败:', store.data.shortcut);
+    const s = store.data;
+    const ok = globalShortcut.register(s.shortcut, () => screenshot.start());
+    if (!ok) console.warn('[shortcut] 注册失败:', s.shortcut);
+    // 录屏快捷键（与截图快捷键相同时跳过，避免注册两次）
+    if (s.recordShortcut && s.recordShortcut !== s.shortcut) {
+      const ok2 = globalShortcut.register(s.recordShortcut, () => screenshot.startRecording());
+      if (!ok2) console.warn('[shortcut] 录屏快捷键注册失败:', s.recordShortcut);
+    }
   } catch (e) {
     console.warn('[shortcut] 注册异常:', e.message);
   }
@@ -107,8 +113,8 @@ function rebuildTrayMenu() {
   if (!tray) return;
   const s = store.data;
   const menu = Menu.buildFromTemplate([
-    { label: t('tray.capture'), click: () => screenshot.start() },
-    { label: t('tray.shortcut', formatAccelerator(s.shortcut)), enabled: false },
+    { label: t('tray.capture', formatAccelerator(s.shortcut)), click: () => screenshot.start() },
+    { label: t('tray.record', formatAccelerator(s.recordShortcut)), click: () => screenshot.startRecording() },
     { type: 'separator' },
     {
       label: t('tray.autoAnalyze'),
@@ -154,6 +160,15 @@ function setupIpc() {
   ipcMain.handle('pin:drag-move', (e, p) => screenshot.movePinDrag(e.sender, p));
   ipcMain.handle('pin:drag-end', (e) => screenshot.endPinDrag(e.sender));
   ipcMain.handle('pin:close', (e) => screenshot.closePin(e.sender));
+  // 录屏
+  ipcMain.handle('rec:selection', (_e, p) => screenshot.beginRecording(p));
+  ipcMain.handle('rec:bar-drag-start', (e, p) => screenshot.startBarDrag(e.sender, p));
+  ipcMain.handle('rec:bar-drag-move', (e, p) => screenshot.moveBarDrag(e.sender, p));
+  ipcMain.handle('rec:bar-drag-end', (e) => screenshot.endBarDrag(e.sender));
+  ipcMain.handle('rec:stop', () => screenshot.stopRecording());
+  ipcMain.handle('rec:cancel', () => screenshot.finishRecording());
+  ipcMain.handle('rec:data', (_e, buf) => screenshot.saveRecording(buf));
+  ipcMain.handle('rec:ready', () => screenshot.onRecorderReady());
 
   // 工具条
   ipcMain.handle('toolbar:size', (_e, payload) => screenshot.layoutToolbar(payload));
@@ -168,13 +183,14 @@ function setupIpc() {
   ipcMain.handle('settings:get', () => JSON.parse(JSON.stringify(store.data)));
   ipcMain.handle('settings:save', (_e, { settings }) => {
     const prevShortcut = store.data.shortcut;
+    const prevRecordShortcut = store.data.recordShortcut;
     const prevLogin = store.data.openAtLogin;
     const prevLang = store.data.language;
     const prevTheme = store.data.theme;
     store.data = store.patch(normalizeSettings(settings));
     if (store.data.language !== prevLang) setLang(store.data.language);
     if (store.data.theme !== prevTheme) applyTheme();
-    if (store.data.shortcut !== prevShortcut) registerShortcut();
+    if (store.data.shortcut !== prevShortcut || store.data.recordShortcut !== prevRecordShortcut) registerShortcut();
     if (store.data.openAtLogin !== prevLogin) {
       applyTheme();
     app.setLoginItemSettings({ openAtLogin: !!store.data.openAtLogin });

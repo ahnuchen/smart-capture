@@ -1,5 +1,5 @@
 // 截图会话编排：屏幕捕获 → 覆盖窗选区 → 浮动工具条 → 分析
-const { BrowserWindow, desktopCapturer, screen, dialog, clipboard, nativeImage, globalShortcut } = require('electron');
+const { BrowserWindow, desktopCapturer, screen, dialog, clipboard, nativeImage, globalShortcut, shell } = require('electron');
 const path = require('path');
 const { t } = require('../shared/i18n');
 const { agentName } = require('../shared/agents');
@@ -56,6 +56,17 @@ class ScreenshotManager {
     this.autoFired = false;
     this.pins = new Set(); // 已钉在屏幕上的窗口
     this._pinDrag = null; // {win, px, py, bounds}
+    this.recordMode = false; // 覆盖窗处于「选录屏区域」模式
+    this.recording = false;
+    this.recWin = null;
+    this.recBar = null;
+    this.recTimer = null;
+    this.recStartedAt = 0;
+    this.recPhase = 'idle'; // idle | setup | countdown | live
+    this.recRect = null;
+    this.recDisplay = null;
+    this.recFormat = '.mp4';
+    this.recCountTimer = null;
   }
 
   isActive() {
@@ -64,6 +75,7 @@ class ScreenshotManager {
 
   async start(options = {}) {
     if (this.active) return;
+    this.recordMode = !!options.record;
     this.active = true;
     this.autoFired = false;
     this.selection = null;
@@ -157,7 +169,7 @@ class ScreenshotManager {
       });
       win.webContents.once('did-finish-load', () => {
         if (win.isDestroyed()) return;
-        win.webContents.send('overlay:init', { image, displayId: display.id });
+        win.webContents.send('overlay:init', { image, displayId: display.id, record: !!this.recordMode });
         win.focus();
       });
       win.on('closed', () => {
@@ -366,6 +378,235 @@ class ScreenshotManager {
       win.moveTop();
     }
     this.syncToolbarRectToOverlay(); // 让覆盖窗知道工具条位置，用于鼠标穿透
+  }
+
+// ---- 录屏 ----
+  startRecording() {
+    if (this.active) return;
+    // 上一轮异常残留（面板没关、录制没结束）先清掉，保证这次一定能进选区
+    if (this.recPhase && this.recPhase !== 'idle') this.finishRecording();
+    if (this.recPhase && this.recPhase !== 'idle') return;
+    this.recordMode = true;
+    this.start({ record: true }).catch((e) => console.error('[rec] 启动选区失败:', e.message));
+  }
+
+  // 覆盖窗里选好格式并倒计时结束后调用：直接开录
+  async beginRecording(payload) {
+    try {
+      return await this._beginRecording(payload);
+    } catch (e) {
+      console.error('[rec] 开始录制失败:', (e && e.stack) || e);
+      this.finishRecording();
+      dialog.showErrorBox('无法开始录制', String((e && e.message) || e));
+    }
+  }
+
+  async _beginRecording({ displayId, rect, format }) {
+    if (DEBUG) console.log('[rec] begin payload:', JSON.stringify({ displayId, rect, format, overlays: this.overlays.length }));
+    if (!rect || !rect.w || !rect.h) { console.warn('[rec] 区域为空，取消'); this.finishRecording(); return; }
+    const entry = this.overlays.find((o) => o.display.id === displayId) || this.overlays[0];
+    const display = entry ? entry.display : screen.getPrimaryDisplay();
+    for (const o of this.overlays) { if (!o.win.isDestroyed()) o.win.close(); }
+    this.overlays = [];
+    this.closeToolbar();
+    this.active = false;
+    this.recordMode = false;
+
+    this.recRect = { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.w), h: Math.round(rect.h) };
+    this.recDisplay = display;
+    this.recFormat = format === 'gif' ? '.gif' : '.mp4';
+    this.recPhase = 'live';
+
+    let sourceId = null;
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1, height: 1 } });
+      const src = sources.find((s) => s.display_id === String(display.id)) || sources[0];
+      sourceId = src && src.id;
+    } catch (e) {
+      console.error('[rec] 找不到屏幕源:', e.message);
+    }
+    if (!sourceId) { this.finishRecording(); return; }
+
+    // 隐藏的录制窗
+    const recWin = new BrowserWindow({
+      show: false, width: 200, height: 120, skipTaskbar: true, hasShadow: false,
+      webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    });
+    recWin.setMenu(null);
+    attachConsoleTag(recWin, 'rec');
+    this.recWin = recWin;
+    recWin.loadFile(path.join(__dirname, '../renderer/recorder/index.html'));
+    recWin.webContents.once('did-finish-load', () => {
+      if (recWin.isDestroyed()) return;
+      recWin.webContents.send('rec:start', { sourceId, fps: 30 });
+    });
+
+    // 控制条：放在选区外（下方优先，放不下放上方）
+    const bounds = display.bounds;
+    const region = {
+      x: Math.round(bounds.x + rect.x),
+      y: Math.round(bounds.y + rect.y),
+      w: Math.round(rect.w),
+      h: Math.round(rect.h),
+    };
+    const wa = display.workArea;
+    const BAR_W = 268, BAR_H = 56, GAP = 10;
+    const barX = Math.min(Math.max(region.x + region.w - BAR_W, wa.x + 8), wa.x + wa.width - BAR_W - 8);
+    let barY = region.y + region.h + GAP;
+    if (barY + BAR_H > wa.y + wa.height - 8) barY = Math.max(wa.y + 8, region.y - BAR_H - GAP);
+    const bar = new BrowserWindow({
+      x: Math.round(barX), y: Math.round(barY), width: BAR_W, height: BAR_H,
+      frame: false, transparent: true, backgroundColor: '#00000000',
+      resizable: false, movable: true, skipTaskbar: true, hasShadow: false,
+      focusable: true, show: false,
+      webPreferences: { preload: PRELOAD, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    });
+    bar.setMenu(null);
+    attachConsoleTag(bar, 'recbar');
+    this.recBar = bar;
+    bar.loadFile(path.join(__dirname, '../renderer/recbar/index.html'));
+    const showBar = (why) => {
+      if (bar.isDestroyed()) return;
+      bar.setAlwaysOnTop(false);
+      bar.setAlwaysOnTop(true, 'floating');
+      bar.show();
+      bar.focus();
+      bar.moveTop();
+      if (DEBUG) console.log('[rec] bar shown (' + why + ') visible=', bar.isVisible(), 'focused=', bar.isFocused(), JSON.stringify(bar.getBounds()));
+    };
+    bar.webContents.once('did-finish-load', () => {
+      if (bar.isDestroyed()) return;
+      bar.webContents.send('rec:mode', { mode: 'live' });
+      showBar('load');
+    });
+    // 页面加载异常时也不要留给用户一块空窗口
+    setTimeout(() => { if (!bar.isDestroyed() && !bar.isVisible()) showBar('timeout'); }, 1500);
+
+    this.recReady = false;
+    this._stopPending = false;
+    this.recording = true;
+    this.recStartedAt = Date.now();
+    this.recTimer = setInterval(() => {
+      if (!this.recBar || this.recBar.isDestroyed()) return;
+      this.recBar.webContents.send('rec:tick', { seconds: Math.floor((Date.now() - this.recStartedAt) / 1000) });
+    }, 1000);
+    if (DEBUG) console.log('[rec] live', JSON.stringify(region), 'format=', this.recFormat);
+  }
+
+  onRecorderReady() {
+    this.recReady = true;
+    if (DEBUG) console.log('[rec] recorder ready');
+    if (this._stopPending) { this._stopPending = false; this.stopRecording(); }
+  }
+
+  startBarDrag(sender, { x, y }) {
+    const bar = this.recBar;
+    if (!bar || bar.isDestroyed() || bar.webContents !== sender) return { ok: false };
+    this._barDrag = { px: x, py: y, bounds: bar.getBounds() };
+    return { ok: true };
+  }
+
+  moveBarDrag(sender, { x, y }) {
+    const d = this._barDrag;
+    const bar = this.recBar;
+    if (!d || !bar || bar.isDestroyed()) return { ok: false };
+    bar.setBounds({
+      x: Math.round(d.bounds.x + (x - d.px)),
+      y: Math.round(d.bounds.y + (y - d.py)),
+      width: d.bounds.width,
+      height: d.bounds.height,
+    });
+    return { ok: true };
+  }
+
+  endBarDrag() {
+    this._barDrag = null;
+    return { ok: true };
+  }
+
+  stopRecording() {
+    if (this.recPhase !== 'live') return;
+    // 录制页可能还没就绪（getUserMedia 冷启动 1~2 秒），先挂起，就绪后立刻停
+    if (!this.recReady) { this._stopPending = true; if (DEBUG) console.log('[rec] stop pending (recorder not ready)'); return; }
+    if (this.recTimer) { clearInterval(this.recTimer); this.recTimer = null; }
+    if (this.recWin && !this.recWin.isDestroyed()) this.recWin.webContents.send('rec:stopReq');
+    if (DEBUG) console.log('[rec] stop requested');
+  }
+
+  recCropFilter() {
+    const d = this.recDisplay;
+    const r = this.recRect;
+    const sf = d && d.scaleFactor ? d.scaleFactor : 1;
+    const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+    const frameW = d ? Math.round(d.size.width * sf) : 0;
+    const frameH = d ? Math.round(d.size.height * sf) : 0;
+    let w = even(r.w * sf);
+    let h = even(r.h * sf);
+    let x = Math.round((r.x * sf) / 2) * 2;
+    let y = Math.round((r.y * sf) / 2) * 2;
+    if (frameW && frameH) {
+      w = Math.min(w, even(frameW));
+      h = Math.min(h, even(frameH));
+      x = Math.max(0, Math.min(x, frameW - w));
+      y = Math.max(0, Math.min(y, frameH - h));
+    }
+    return `crop=${w}:${h}:${x}:${y},`;
+  }
+
+  async saveRecording(buffer) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const ts = new Date();
+    const stamp = String(ts.getFullYear()) + pad(ts.getMonth() + 1) + pad(ts.getDate())
+      + '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + pad(ts.getSeconds());
+    const ext = this.recFormat || '.mp4';
+    const { canceled, filePath } = await dialog.showSaveDialog({
+      title: t('rec.saveTitle'),
+      defaultPath: 'SmartCapture_' + stamp + ext,
+      filters: [
+        { name: ext === '.gif' ? 'GIF' : 'MP4', extensions: [ext.slice(1)] },
+        { name: 'WebM', extensions: ['webm'] },
+      ],
+    });
+    // 裁剪参数依赖选区，必须在 finishRecording 清空前算好
+    const crop = this.recCropFilter();
+    this.finishRecording();
+    if (canceled || !filePath) return;
+    const fs = require('fs');
+    const os = require('os');
+    const tmp = path.join(os.tmpdir(), 'sc-rec-' + Date.now() + '.webm');
+    try {
+      fs.writeFileSync(tmp, Buffer.from(new Uint8Array(buffer)));
+      const outExt = path.extname(filePath).toLowerCase();
+      const ffmpeg = require('@ffmpeg-installer/ffmpeg').path;
+      const args = outExt === '.gif'
+        ? ['-y', '-i', tmp, '-vf', `${crop}fps=12,scale=iw:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse`, filePath]
+        : outExt === '.webm'
+          ? ['-y', '-i', tmp, '-vf', crop + 'format=yuv420p', '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '32', '-row-mt', '1', filePath]
+          : ['-y', '-i', tmp, '-vf', crop + 'format=yuv420p', '-c:v', 'libx264', '-movflags', '+faststart', filePath];
+      require('child_process').execFileSync(ffmpeg, args, { windowsHide: true });
+      try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+      shell.showItemInFolder(filePath);
+    } catch (e) {
+      console.error('[rec] 保存失败:', e.message);
+      try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+      dialog.showErrorBox(t('rec.saveFailTitle'), String(e.message || e));
+    }
+  }
+
+  finishRecording() {
+    if (this.recTimer) { clearInterval(this.recTimer); this.recTimer = null; }
+    if (this.recCountTimer) { clearTimeout(this.recCountTimer); this.recCountTimer = null; }
+    if (this.recBar && !this.recBar.isDestroyed()) this.recBar.close();
+    this.recBar = null;
+    if (this.recWin && !this.recWin.isDestroyed()) this.recWin.close();
+    this.recWin = null;
+    this.recording = false;
+    this.recReady = false;
+    this._stopPending = false;
+    this.recStartedAt = 0;
+    this.recPhase = 'idle';
+    this.recRect = null;
+    this.recDisplay = null;
   }
 
   // ---- 钉图 ----

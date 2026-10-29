@@ -51,8 +51,9 @@
         modelEditor: { open: false, providerId: null, originalId: null, id: '', name: '', vision: false, thinking: false },
         agentEditor: { open: false, id: null, icon: '', name: '', prompt: '', model: '' },
         testResults: {},
-        recording: false,
+        recordingFor: null, // 正在录制的目标：'shot' | 'record'
         pendingShortcut: null,
+        pendingRecordShortcut: null,
         dialog: { open: false, message: '', danger: false },
       };
     },
@@ -80,6 +81,9 @@
       shortcutDisplay() {
         return formatShortcut(this.pendingShortcut || (this.settings && this.settings.shortcut));
       },
+      recordShortcutDisplay() {
+        return formatShortcut(this.pendingRecordShortcut || (this.settings && this.settings.recordShortcut));
+      },
     },
     created() {
       this._offs = [];
@@ -90,18 +94,24 @@
       }));
       this._onKey = (e) => {
         // 快捷键录制优先
-        if (this.recording) {
+        if (this.recordingFor) {
           e.preventDefault();
           e.stopPropagation();
           if (e.key === 'Escape') {
-            this.recording = false;
+            this.recordingFor = null;
             return;
           }
           const combo = buildAccelerator(e);
           if (!combo) return;
-          this.recording = false;
-          this.pendingShortcut = combo;
-          this.settings.shortcut = combo;
+          const target = this.recordingFor;
+          this.recordingFor = null;
+          if (target === 'record') {
+            this.pendingRecordShortcut = combo;
+            this.settings.recordShortcut = combo;
+          } else {
+            this.pendingShortcut = combo;
+            this.settings.shortcut = combo;
+          }
           this.markDirty();
           return;
         }

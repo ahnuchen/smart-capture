@@ -7,7 +7,7 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: capture →
 ## ✨ Features
 
 ### Capture & selection
-- **🎯 Area capture**: global shortcut (default `Ctrl/Cmd+Shift+A`) or tray trigger, drag to select
+- **🎯 Area capture**: global shortcut (default `Ctrl/Cmd+Alt+X`, configurable) or tray trigger, drag to select
 - **Selection re-adjust**: after confirming, resize with 8 handles or move with edge bands — no need to capture again
 - **Color picker**: Shift to cycle HEX / RGB / HSL, magnifier + crosshair
 - **Multi-monitor & HiDPI**: crops by physical pixels, stays sharp on scaled displays
@@ -25,6 +25,11 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: capture →
 ### Pin to screen
 - **📌 Pin**: turn the annotated screenshot into an always-on-top window; draggable, multiple pins allowed
 - Border tinted blue and brightens on hover so it stands out from the real screen; close via ✕ / double-click / right-click / ESC
+
+### Screen recording
+- **Area recording**: global shortcut (default `Ctrl/Cmd+Alt+R`, configurable) or tray trigger; pick `MP4` / `GIF` inside the selection, then a **3-second countdown** before recording starts (silent)
+- **Recording bar**: sits just outside the selection, draggable, shows a live timer; `Stop` saves, `Cancel` discards
+- Records the raw screen stream and crops to the selection on save (physical pixels on HiDPI), so it no longer depends on compositor frames — static screens still record
 
 ### AI analysis
 - **📦 5 built-in agents**: 🔍 General Analysis, 📝 Homework Solver, 📐 Math Solver (LaTeX), 🌐 Translate, 📄 Text Extraction
@@ -108,6 +113,8 @@ src/
 │   ├── overlay/   # Fullscreen overlay: selection, re-adjust, Fabric annotation, color picker
 │   ├── toolbar/   # Floating toolbar: tools / styles / output actions / agents
 │   ├── pin/       # Pin window (plain DOM: image + drag + close)
+│   ├── recorder/  # Hidden recorder page: desktop stream → MediaRecorder (WebM)
+│   ├── recbar/    # Recording bar: timer / stop / cancel / drag
 │   ├── result/    # Result window (streaming Markdown + KaTeX + follow-up)
 │   └── settings/  # Settings (model services / agent CRUD / behavior / language / theme)
 └── shared/        # Built-in agents & free model definitions, i18n dictionary

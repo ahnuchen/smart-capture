@@ -16,7 +16,8 @@ const DEFAULT_SETTINGS = {
   agents: BUILTIN_AGENTS.map((a) => ({ ...a, enabled: a.id === 'translate' || a.id === 'ocr' })),
   defaultAgentId: 'translate',
   autoAnalyze: false,
-  shortcut: 'CommandOrControl+Shift+A',
+  shortcut: 'CommandOrControl+Alt+X',
+  recordShortcut: 'CommandOrControl+Alt+R',
   openAtLogin: false,
 };
 
@@ -54,6 +55,9 @@ class Store {
     }
     // 旧版内置智能体迁移 + 语言同步
     if (Array.isArray(data.agents)) data.agents = migrateStoredAgents(data.agents);
+    // 截图快捷键默认值从 Ctrl+Shift+A 改为 Ctrl+Alt+X：只有仍在使用旧默认值时才迁移，
+    // 用户自己改过的不动
+    if (data.shortcut === 'CommandOrControl+Shift+A') data.shortcut = DEFAULT_SETTINGS.shortcut;
     setLang(data.language);
     return data;
   }

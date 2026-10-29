@@ -374,7 +374,16 @@
                 <label>{{ $t('cap.current') }}</label>
                 <div><span class="kbd" id="shortcutDisplay">{{ shortcutDisplay }}</span></div>
               </div>
-              <div class="field"><label>{{ $t('cap.record') }}</label><button id="btnRecord" @click="recording = true">{{ recording ? $t('cap.recording') : $t('cap.record') }}</button></div>
+              <div class="field"><label>{{ $t('cap.record') }}</label><button id="btnRecord" @click="recordingFor = 'shot'">{{ recordingFor === 'shot' ? $t('cap.recording') : $t('cap.record') }}</button></div>
+              <div class="note">{{ $t('cap.recordNote') }}</div>
+            </div>
+            <div class="card">
+              <h3>{{ $t('cap.recordShortcut') }}</h3>
+              <div class="field">
+                <label>{{ $t('cap.current') }}</label>
+                <div><span class="kbd" id="recordShortcutDisplay">{{ recordShortcutDisplay }}</span></div>
+              </div>
+              <div class="field"><label>{{ $t('cap.record') }}</label><button id="btnRecordRec" @click="recordingFor = 'record'">{{ recordingFor === 'record' ? $t('cap.recording') : $t('cap.record') }}</button></div>
               <div class="note">{{ $t('cap.recordNote') }}</div>
             </div>
           </section>
