@@ -2,21 +2,40 @@
 
 [中文](README.md)
 
-Cross-platform (Windows / macOS) AI screenshot analysis desktop app: After capturing a screenshot, click an agent button on the toolbar next to the selection to automatically analyze the image content (homework, math, translation, OCR, etc.) using a large language model.
+Cross-platform (Windows / macOS) AI screenshot analysis desktop app: capture → annotate → one click to analyze the image with an LLM (homework, math, translation, OCR, etc.), or pin the screenshot on screen.
 
 ## ✨ Features
 
-- **🎯 Area Capture**: Global shortcut (default `Ctrl/Cmd+Shift+A`) or tray trigger, drag to select, Enter/double-click to copy, ESC to reselect
-- **🤖 Agent Toolbar**: After selection, toolbar appears next to the selection — `Done` / `Save` alongside agent buttons, click to analyze
-- **📦 5 Built-in Agents**: 🔍 General Analysis, 📝 Homework Solver, 📐 Math Solver (LaTeX rendering), 🌐 Translate, 📄 Text Extraction
-- **✏️ Custom Agents**: Any emoji icon + name + system prompt + optional model override
-- **🆓 Free Built-in Models**: AI Tools platform (platform.aitools.cfd), free key included, default `zhipu/glm-4v-flash`; rate-limited to 1 req/3s with automatic retry
-- **🔌 Custom Model Services**: Any OpenAI-compatible API (Base URL + key + model list)
-- **⚡ Default Agent + Auto-analyze**: When enabled, analysis starts immediately after selection
-- ** Color Picker**: Shift to cycle HEX / RGB / HSL, magnifier + crosshair
-- ** Bilingual (Chinese/English)**: One-click language switch in settings
-- ** Result Window**: Streaming Markdown output, collapsible thinking process, KaTeX formulas, follow-up questions, copy/save image, switch agent to re-analyze
-- Tray常驻, launch at login, customizable shortcut, multi-monitor & HiDPI support, frameless custom title bar
+### Capture & selection
+- **🎯 Area capture**: global shortcut (default `Ctrl/Cmd+Shift+A`) or tray trigger, drag to select
+- **Selection re-adjust**: after confirming, resize with 8 handles or move with edge bands — no need to capture again
+- **Color picker**: Shift to cycle HEX / RGB / HSL, magnifier + crosshair
+- **Multi-monitor & HiDPI**: crops by physical pixels, stays sharp on scaled displays
+
+### Annotation (Fabric.js)
+- **Rectangle / ellipse / line / arrow / pencil / highlighter / mosaic / text**
+- Each tool remembers its own color and stroke width; **mosaic follows the drag live**, text uses a dedicated **font-size dropdown (10–96)**
+- Undo / redo / clear; annotations are final once drawn (no accidental dragging)
+
+### Toolbar
+- One row: `drag handle | annotation tools | color / width | undo·redo·clear | ✕ Save 📌 ✔`, agents on a second row
+- The left handle drags the toolbar anywhere; position is anchored so expanding the style row never shifts it
+- Tools toggle on/off: the style row hides when no tool is selected; follows system / dark / light theme
+
+### Pin to screen
+- **📌 Pin**: turn the annotated screenshot into an always-on-top window; draggable, multiple pins allowed
+- Border tinted blue and brightens on hover so it stands out from the real screen; close via ✕ / double-click / right-click / ESC
+
+### AI analysis
+- **📦 5 built-in agents**: 🔍 General Analysis, 📝 Homework Solver, 📐 Math Solver (LaTeX), 🌐 Translate, 📄 Text Extraction
+- **✏️ Custom agents**: icon *or* name (only one required) + system prompt + optional model override
+- **🆓 Free built-in models**: AI Tools platform (platform.aitools.cfd), free key included, default `zhipu/glm-4v-flash`; rate-limited to 1 req/3s with automatic retry
+- **🔌 Custom model services**: any OpenAI-compatible API (Base URL + key + model list), with vision flag, **thinking-mode toggle (off by default)** and connectivity test
+- **⚡ Default agent + auto-analyze**: analysis starts right after the selection when enabled
+
+### Misc
+- **Result window**: streaming Markdown, collapsible thinking, KaTeX formulas, follow-up chat, copy/save image, switch agent to re-analyze
+- **🌐 Bilingual (Chinese/English)**, tray resident, launch at login, customizable shortcut, frameless custom title bar
 
 ## 📸 Screenshots
 
@@ -30,7 +49,7 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: After captu
 ### Windows
 1. Download `SmartCapture-Setup-1.0.0.exe` from [Releases](https://github.com/ahnuchen/smart-capture/releases)
 2. Double-click to install, desktop shortcut created
-3. After first launch, app stays in tray; press `Ctrl+Shift+A` to capture
+3. After first launch the app stays in the tray; press `Ctrl+Shift+A` to capture
 
 ### macOS
 ```bash
@@ -44,17 +63,20 @@ First run requires permission in System Settings → Privacy & Security → Scre
 git clone https://github.com/ahnuchen/smart-capture.git
 cd smart-capture
 npm install          # For China network: ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm install
-npm start            # Dev run (tray常驻, press Ctrl+Shift+A to capture)
-npm run dev          # Open DevTools debug mode
+npm start            # Run (stays in tray, press Ctrl+Shift+A to capture)
+npm run dev          # Debug mode (renderer logs forwarded to the terminal)
+npm run dev:tools    # Debug + auto-open DevTools for overlay/toolbar (detached DevTools changes z-order)
 ```
+
+Stack: Electron 33 + **Vue 2.7 (UMD `<script>` + `<script type="text/x-template">`, no bundler)**, Fabric.js 5 for annotation, marked + DOMPurify + KaTeX for rendering. Every renderer window is `index.html` (`#tpl-*` templates) + `*-app.js` (component) + a boot script; state is never stored on `window.api` (the contextBridge object is frozen).
 
 ### Self-test
 ```bash
-node scripts/gen-testscreen.js   # Generate fake screen for self-test
+node scripts/gen-testscreen.js   # Generate a fake screen for self-test
 npx electron . --selftest --fake-screen   # End-to-end self-test (artifacts in test-artifacts/)
 ```
 
-##  Build
+## 📦 Build
 
 ```bash
 npm run dist-win     # Windows NSIS installer → dist/
@@ -68,23 +90,26 @@ ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-
 npm run dist-win
 ```
 
-## ️ Notes
+## ⚠️ Notes
 
 - macOS first use requires Screen Recording permission in System Settings → Privacy & Security → Screen Recording
-- Built-in free key is distributed with the installer (visible to anyone); if rate-limited, change key in Settings → Model Services or connect your own service
-- If capture fails with a security software warning, it's usually enterprise DLP / screen protection policies blocking system screen capture; whitelist the app
+- The built-in free key ships with the installer (visible to anyone); if rate-limited, change it in Settings → Model Services or connect your own service
+- Thinking mode is per model and sends `thinking.type` in the request body; adapt the code if your provider expects a different field (e.g. `reasoning_effort`)
+- If capture fails with a security warning, it is usually enterprise DLP / screen protection blocking system screen capture; whitelist the app
 
 ## 📁 Project Structure
 
 ```
 src/
-├── main/          # Main process: capture orchestration / analysis session / AI client / settings storage / tray
+├── main/          # Main process: capture orchestration / analysis session / AI client / settings store / tray
 ├── preload/       # contextIsolation security bridge
 ├── renderer/
-│   ├── overlay/   # Fullscreen overlay (drag selection, DPI crop, color picker)
-│   ├── toolbar/   # Floating toolbar next to selection (Done/Save/agent buttons)
+│   ├── shared/    # vue-i18n.js: $t for Vue windows (dictionary fetched once at boot)
+│   ├── overlay/   # Fullscreen overlay: selection, re-adjust, Fabric annotation, color picker
+│   ├── toolbar/   # Floating toolbar: tools / styles / output actions / agents
+│   ├── pin/       # Pin window (plain DOM: image + drag + close)
 │   ├── result/    # Result window (streaming Markdown + KaTeX + follow-up)
-│   └── settings/  # Settings (model services / agent CRUD / behavior / language)
+│   └── settings/  # Settings (model services / agent CRUD / behavior / language / theme)
 └── shared/        # Built-in agents & free model definitions, i18n dictionary
 ```
 
@@ -95,4 +120,4 @@ MIT
 ## 🙏 Acknowledgments
 
 - Free models provided by [AI Tools Platform](https://platform.aitools.cfd/)
-- Built with Electron
+- Built with [Electron](https://www.electronjs.org/), [Vue 2](https://v2.vuejs.org/) and [Fabric.js](http://fabricjs.com/)
