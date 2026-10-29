@@ -420,6 +420,12 @@
               </div>
             </div>
             <div class="card">
+              <h3>{{ $t('gen.saveBehavior') }}</h3>
+              <div class="field">
+                <label class="switch"><input type="checkbox" id="openSaveFolder" v-model="settings.openSaveFolder" @change="markDirty" /> <span>{{ $t('gen.openSaveFolder') }}</span></label>
+              </div>
+            </div>
+            <div class="card">
               <h3>{{ $t('gen.aboutTitle') }}</h3>
               <div class="note" id="aboutText">{{ $t('gen.about', '1.0.0') }}</div>
             </div>

@@ -750,7 +750,7 @@ class ScreenshotManager {
       return { ok: false, error: e.message };
     }
     this.closePreview('save');
-    revealFileInFolder(filePath);
+    if (this.store.data.openSaveFolder !== false) revealFileInFolder(filePath);
     return { ok: true };
   }
 
@@ -1085,7 +1085,7 @@ class ScreenshotManager {
         if (!canceled && filePath) {
           try {
             fs.writeFileSync(filePath, nativeImage.createFromDataURL(png).toPNG());
-            revealFileInFolder(filePath);
+            if (this.store.data.openSaveFolder !== false) revealFileInFolder(filePath);
           } catch (e) {
             dialog.showErrorBox(t('dialog.saveError.title'), t('dialog.saveError.msg', e.message));
           }

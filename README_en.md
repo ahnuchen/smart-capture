@@ -45,6 +45,7 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: capture →
 ### Misc
 - **Result window**: streaming Markdown, collapsible thinking, KaTeX formulas, follow-up chat, copy/save image, switch agent to re-analyze
 - **🌐 Bilingual (Chinese/English)**, tray resident, launch at login, customizable shortcut, frameless custom title bar
+- **Reveal after save**: opening the containing folder and selecting the saved screenshot / recording can be turned off in Settings → General
 
 ## 📸 Screenshots
 

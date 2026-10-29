@@ -19,6 +19,8 @@ const DEFAULT_SETTINGS = {
   shortcut: 'CommandOrControl+Alt+X',
   recordShortcut: 'CommandOrControl+Alt+R',
   openAtLogin: false,
+  // 保存截图/录屏后打开所在文件夹并选中文件
+  openSaveFolder: true,
   // 结果窗口上次被拖到的位置 {x,y}；空 = 每次居中
   resultBounds: null,
 };

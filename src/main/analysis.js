@@ -309,7 +309,7 @@ class AnalysisManager {
           .then(({ canceled, filePath }) => {
             if (!canceled && filePath) {
               require('fs').writeFileSync(filePath, nativeImage.createFromDataURL(session.imageFull).toPNG());
-              revealFileInFolder(filePath);
+              if (this.store.data.openSaveFolder !== false) revealFileInFolder(filePath);
             }
           })
           .catch(() => { /* 忽略 */ });
