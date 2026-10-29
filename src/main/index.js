@@ -167,8 +167,11 @@ function setupIpc() {
   ipcMain.handle('rec:bar-drag-end', (e) => screenshot.endBarDrag(e.sender));
   ipcMain.handle('rec:stop', () => screenshot.stopRecording());
   ipcMain.handle('rec:cancel', () => screenshot.finishRecording());
-  ipcMain.handle('rec:data', (_e, buf) => screenshot.saveRecording(buf));
+  ipcMain.handle('rec:chunk', (_e, buf) => screenshot.appendRecordingChunk(buf));
+  ipcMain.handle('rec:done', () => screenshot.onRecordingDone());
   ipcMain.handle('rec:ready', () => screenshot.onRecorderReady());
+  ipcMain.handle('preview:copy', (e) => screenshot.copyPreview(e.sender));
+  ipcMain.handle('preview:save', (e) => screenshot.savePreview(e.sender));
 
   // 工具条
   ipcMain.handle('toolbar:size', (_e, payload) => screenshot.layoutToolbar(payload));

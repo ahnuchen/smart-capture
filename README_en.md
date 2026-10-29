@@ -28,9 +28,12 @@ Cross-platform (Windows / macOS) AI screenshot analysis desktop app: capture →
 
 ### Screen recording
 - **Area recording**: global shortcut (default `Ctrl/Cmd+Alt+R`, configurable) or tray trigger; pick `MP4` / `GIF` inside the selection, then a **3-second countdown** before recording starts (silent)
-- **Selection stays visible**: a blue frame is drawn around the selection while recording (click-through, so it never blocks the app underneath; drawn outside the selection so it is never captured)
-- **Recording bar**: sits just outside the selection, draggable, shows a live timer; `Stop` saves, `Cancel` discards. Clicking `Stop` hides both the bar and the frame and goes straight to saving
-- Records the raw screen stream and crops to the selection on save (physical pixels on HiDPI), so it no longer depends on compositor frames — static screens still record
+- **Duration limit**: `MP4` up to **60 minutes**, `GIF` up to **60 seconds**; stops automatically at the limit and goes straight to the preview
+- **Selection stays visible**: a blue frame matching the selection border is drawn around the selection while recording (click-through, so it never blocks the app underneath; drawn outside the crop so it is never captured)
+- **Recording bar**: sits just outside the selection, draggable, shows a live timer; `Stop` / `Cancel`. Clicking `Stop` hides both the bar and the frame
+- **Preview before deciding**: a preview window opens after stopping (draggable, minimize / maximize / close) with `Copy to clipboard` and `Save`; it closes itself after either succeeds, while `✕` simply discards
+- **Copy to clipboard** puts the video/GIF on the clipboard as a **file** (paste straight into chat apps or Explorer); saving reveals the file in its folder
+- Records the raw screen stream and crops to the selection on save (physical pixels on HiDPI), so it no longer depends on compositor frames — static screens still record. Recording is written to a temp file in chunks, so memory stays flat
 
 ### AI analysis
 - **📦 5 built-in agents**: 🔍 General Analysis, 📝 Homework Solver, 📐 Math Solver (LaTeX), 🌐 Translate, 📄 Text Extraction
@@ -113,9 +116,11 @@ src/
 │   ├── shared/    # vue-i18n.js: $t for Vue windows (dictionary fetched once at boot)
 │   ├── overlay/   # Fullscreen overlay: selection, re-adjust, Fabric annotation, color picker
 │   ├── toolbar/   # Floating toolbar: tools / styles / output actions / agents
-│   ├── pin/       # Pin window (plain DOM: image + drag + close)
-│   ├── recorder/  # Hidden recorder page: desktop stream → MediaRecorder (WebM)
-│   ├── recbar/    # Recording bar: timer / stop / cancel / drag
+│   ├── pin/       # Pin window (Vue): image + drag + close
+│   ├── recorder/  # Hidden recorder page: desktop stream → MediaRecorder (WebM), chunked to main
+│   ├── recbar/    # Recording bar (Vue): timer / stop / cancel / drag
+│   ├── recframe/  # Recording area border (click-through transparent window)
+│   ├── preview/   # Recording preview (Vue): playback + copy to clipboard / save
 │   ├── result/    # Result window (streaming Markdown + KaTeX + follow-up)
 │   └── settings/  # Settings (model services / agent CRUD / behavior / language / theme)
 └── shared/        # Built-in agents & free model definitions, i18n dictionary

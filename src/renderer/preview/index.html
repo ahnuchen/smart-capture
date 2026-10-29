@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>录制预览</title>
+  <style>
+    :root {
+      --bg: #15171f;
+      --panel: #1b1e27;
+      --border: rgba(120, 130, 160, 0.25);
+      --text: #dbe2f0;
+      --muted: #8b93a7;
+      --accent: #3b82f6;
+      --hover: rgba(255, 255, 255, 0.10);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f6fa;
+        --panel: #ffffff;
+        --border: rgba(60, 70, 100, 0.18);
+        --text: #1f2430;
+        --muted: #6b7280;
+        --hover: rgba(0, 0, 0, 0.06);
+      }
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg); color: var(--text);
+      font: 13px/1.5 "Segoe UI", "Microsoft YaHei", sans-serif;
+      overflow: hidden;
+    }
+    #shell { display: flex; flex-direction: column; height: 100%; }
+    header {
+      height: 40px; flex: none; display: flex; align-items: center; gap: 8px;
+      padding: 0 6px 0 14px; background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      -webkit-app-region: drag;
+    }
+    header .title { font-weight: 600; }
+    header .name { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    header .spacer { flex: 1; }
+    .win-ops { display: flex; -webkit-app-region: no-drag; }
+    .win-ops button {
+      width: 34px; height: 30px; border: none; border-radius: 6px; cursor: pointer;
+      background: transparent; color: var(--muted); font-size: 13px;
+    }
+    .win-ops button:hover { background: var(--hover); color: var(--text); }
+    .win-ops button.close:hover { background: #e81123; color: #fff; }
+    #stage {
+      flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+      background: #0b0d12; padding: 10px;
+    }
+    @media (prefers-color-scheme: light) { #stage { background: #e9ebf2; } }
+    #stage video, #stage img {
+      max-width: 100%; max-height: 100%; display: block;
+      border-radius: 4px; background: #000;
+    }
+    .state { color: var(--muted); font-size: 13px; text-align: center; padding: 0 20px; }
+    .state.busy::after {
+      content: ''; display: inline-block; width: 10px; height: 10px; margin-left: 8px;
+      border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%;
+      animation: spin .8s linear infinite; vertical-align: -1px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    footer {
+      flex: none; display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; background: var(--panel); border-top: 1px solid var(--border);
+    }
+    footer .tip { color: var(--muted); font-size: 12px; flex: 1; }
+    footer button {
+      border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px;
+      background: transparent; color: var(--text); font: inherit; cursor: pointer;
+      transition: all .12s;
+    }
+    footer button:hover:not(:disabled) { border-color: var(--accent); background: rgba(59, 130, 246, 0.12); }
+    footer button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    footer button.primary:hover:not(:disabled) { background: #2f6fe0; }
+    footer button:disabled { opacity: .45; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="text/x-template" id="tpl-preview">
+    <div id="shell">
+      <header>
+        <span class="title">{{ $t('preview.title') }}</span>
+        <span class="name" :title="name">{{ name }}</span>
+        <span class="spacer"></span>
+        <div class="win-ops">
+          <button title="最小化" @click="winOp('minimize')">—</button>
+          <button title="最大化" @click="winOp('maximize')">▢</button>
+          <button class="close" title="关闭" @click="winOp('close')">✕</button>
+        </div>
+      </header>
+
+      <div id="stage">
+        <div v-if="phase === 'processing'" class="state busy">{{ $t('preview.processing') }}</div>
+        <div v-else-if="phase === 'error'" class="state">
+          {{ $t('preview.error') }}<template v-if="error">：{{ error }}</template>
+        </div>
+        <video v-else-if="kind === 'video'" :src="src" controls autoplay muted loop></video>
+        <img v-else :src="src" alt="" />
+      </div>
+
+      <footer>
+        <span class="tip">{{ tip }}</span>
+        <button :disabled="!canAct" @click="copy">{{ $t('preview.copy') }}</button>
+        <button class="primary" :disabled="!canAct" @click="save">{{ $t('preview.save') }}</button>
+      </footer>
+    </div>
+  </script>
+
+  <script src="../../../node_modules/vue/dist/vue.min.js"></script>
+  <script src="../shared/vue-i18n.js"></script>
+  <script src="preview-app.js"></script>
+  <script src="preview.js"></script>
+</body>
+</html>

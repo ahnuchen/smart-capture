@@ -1,10 +1,11 @@
-/* 录屏窗口：直接录制桌面流为 WebM，裁剪由主进程用 ffmpeg 完成。
- * 不用 canvas 中转：canvas.captureStream 依赖合成器出帧，屏幕静止时几乎不出帧。 */
+/* 录屏窗口：直接录制桌面流为 WebM，分片交给主进程追加写临时文件（1 小时也不会撑爆内存）。
+ * 裁剪、转码、预览都由主进程完成。 */
 const bridge = window.api;
 
 let stream = null;
 let recorder = null;
 let stopped = false;
+let sendChain = Promise.resolve();
 
 function pickMime() {
   return ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || 'video/webm';
@@ -13,14 +14,9 @@ function pickMime() {
 function stopAndSend() {
   if (stopped) return;
   stopped = true;
-  const finish = async () => {
-    const parts = (recorder && recorder._parts) || [];
-    const blob = new Blob(parts, { type: 'video/webm' });
-    const buf = await blob.arrayBuffer();
-    console.log('[rec] data ready, bytes =', buf.byteLength, 'chunks =', parts.length);
-    bridge.invoke('rec:data', buf);
-    if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
-  };
+  const finish = () => sendChain
+    .then(() => bridge.invoke('rec:done'))
+    .catch((e) => console.error('[rec] 收尾失败:', e.message));
   if (recorder && recorder.state !== 'inactive') {
     recorder.onstop = finish;
     recorder.stop();
@@ -30,7 +26,7 @@ function stopAndSend() {
 }
 
 bridge.on('rec:start', async (payload) => {
-  const { sourceId, fps } = payload || {};
+  const { sourceId, fps, timeslice } = payload || {};
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
@@ -47,10 +43,18 @@ bridge.on('rec:start', async (payload) => {
 
     const mime = pickMime();
     recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8000000 });
-    recorder._parts = [];
-    recorder.ondataavailable = (e) => { if (e.data && e.data.size) recorder._parts.push(e.data); };
+    recorder.ondataavailable = (e) => {
+      if (!e.data || !e.data.size) return;
+      // 必须串行发送，主进程 appendFile 的顺序才不会乱
+      sendChain = sendChain
+        .then(async () => {
+          const buf = await e.data.arrayBuffer();
+          await bridge.invoke('rec:chunk', buf);
+        })
+        .catch((err) => console.error('[rec] 分片发送失败:', err.message));
+    };
     recorder.onerror = (e) => console.error('[rec] recorder error:', e && (e.name || e.message || e.type));
-    recorder.start(500);
+    recorder.start(timeslice || 2000);
     console.log('[rec] started', mime, stream.getVideoTracks()[0].getSettings());
     bridge.invoke('rec:ready');
   } catch (e) {

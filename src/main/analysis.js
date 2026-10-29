@@ -1,6 +1,7 @@
 // 分析会话：结果窗口 + 多轮对话 + 流式输出
 const { BrowserWindow, clipboard, nativeImage, dialog, screen, nativeTheme } = require('electron');
 const path = require('path');
+const { revealFileInFolder } = require('./reveal');
 const crypto = require('crypto');
 const { chatStream } = require('./ai');
 const { t } = require('../shared/i18n');
@@ -308,6 +309,7 @@ class AnalysisManager {
           .then(({ canceled, filePath }) => {
             if (!canceled && filePath) {
               require('fs').writeFileSync(filePath, nativeImage.createFromDataURL(session.imageFull).toPNG());
+              revealFileInFolder(filePath);
             }
           })
           .catch(() => { /* 忽略 */ });
